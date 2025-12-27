@@ -1,5 +1,4 @@
 <script setup>
-import { VForm } from 'vuetify/components/VForm'
 import authV1BottomShape from '@images/svg/auth-v1-bottom-shape.svg?raw'
 import authV1TopShape from '@images/svg/auth-v1-top-shape.svg?raw'
 import { VNodeRenderer } from '@layouts/components/VNodeRenderer'
@@ -11,8 +10,6 @@ definePage({
     unauthenticatedOnly: true,
   },
 })
-
-const form = ref({ email: '' })
 </script>
 
 <template>
@@ -34,7 +31,7 @@ const form = ref({ email: '' })
       <VCard
         class="auth-card"
         max-width="460"
-        :class="$vuetify.display.smAndUp ? 'pa-6' : 'pa-0'"
+        :class="$vuetify.display.smAndUp ? 'pa-6' : 'pa-2'"
       >
         <VCardItem class="justify-center">
           <VCardTitle>
@@ -51,54 +48,23 @@ const form = ref({ email: '' })
 
         <VCardText>
           <h4 class="text-h4 mb-1">
-            Forgot Password? 🔒
+            Verify your email ✉️
           </h4>
-          <p class="mb-0">
-            Enter your email and we'll send you instructions to reset your password
+          <p class="text-body-1 mb-0">
+            Account activation link sent to your email address: <span class="font-weight-medium text-high-emphasis">hello@example.com</span> Please follow the link inside to continue.
           </p>
-        </VCardText>
 
-        <VCardText>
-          <VForm @submit.prevent="() => {}">
-            <VRow>
-              <!-- email -->
-              <VCol cols="12">
-                <AppTextField
-                  v-model="form.email"
-                  autofocus
-                  label="Email"
-                  type="email"
-                  placeholder="johndoe@email.com"
-                  :rules="[requiredValidator, emailValidator]"
-                />
-              </VCol>
+          <VBtn
+            block
+            to="/"
+            class="my-5"
+          >
+            Skip for now
+          </VBtn>
 
-              <!-- reset password -->
-              <VCol cols="12">
-                <VBtn
-                  block
-                  type="submit"
-                >
-                  Send Reset Link
-                </VBtn>
-              </VCol>
-
-              <!-- back to login -->
-              <VCol cols="12">
-                <RouterLink
-                  class="d-flex align-center justify-center"
-                  :to="{ name: 'login' }"
-                >
-                  <VIcon
-                    icon="tabler-chevron-left"
-                    size="20"
-                    class="me-1 flip-in-rtl"
-                  />
-                  <span>Back to login</span>
-                </RouterLink>
-              </VCol>
-            </VRow>
-          </VForm>
+          <div class="d-flex align-center justify-center">
+            <span class="me-1">Didn't get the mail? </span><a href="#">Resend</a>
+          </div>
         </VCardText>
       </VCard>
     </div>

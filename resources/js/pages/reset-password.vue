@@ -12,7 +12,13 @@ definePage({
   },
 })
 
-const form = ref({ email: '' })
+const form = ref({
+  newPassword: '',
+  confirmPassword: '',
+})
+
+const isPasswordVisible = ref(false)
+const isConfirmPasswordVisible = ref(false)
 </script>
 
 <template>
@@ -30,11 +36,11 @@ const form = ref({ email: '' })
         class="text-primary auth-v1-bottom-shape d-none d-sm-block"
       />
 
-      <!-- 👉 Auth card -->
+      <!-- 👉 Auth Card -->
       <VCard
         class="auth-card"
         max-width="460"
-        :class="$vuetify.display.smAndUp ? 'pa-6' : 'pa-0'"
+        :class="$vuetify.display.smAndUp ? 'pa-6' : 'pa-2'"
       >
         <VCardItem class="justify-center">
           <VCardTitle>
@@ -51,25 +57,42 @@ const form = ref({ email: '' })
 
         <VCardText>
           <h4 class="text-h4 mb-1">
-            Forgot Password? 🔒
+            Reset Password 🔒
           </h4>
           <p class="mb-0">
-            Enter your email and we'll send you instructions to reset your password
+            Your new password must be different from previously used passwords
           </p>
         </VCardText>
 
         <VCardText>
           <VForm @submit.prevent="() => {}">
             <VRow>
-              <!-- email -->
+              <!-- password -->
               <VCol cols="12">
                 <AppTextField
-                  v-model="form.email"
+                  v-model="form.newPassword"
                   autofocus
-                  label="Email"
-                  type="email"
-                  placeholder="johndoe@email.com"
-                  :rules="[requiredValidator, emailValidator]"
+                  label="New Password"
+                  placeholder="············"
+                  :type="isPasswordVisible ? 'text' : 'password'"
+                  autocomplete="password"
+                  :rules="[requiredValidator]"
+                  :append-inner-icon="isPasswordVisible ? 'tabler-eye-off' : 'tabler-eye'"
+                  @click:append-inner="isPasswordVisible = !isPasswordVisible"
+                />
+              </VCol>
+
+              <!-- Confirm Password -->
+              <VCol cols="12">
+                <AppTextField
+                  v-model="form.confirmPassword"
+                  label="Confirm Password"
+                  autocomplete="confirm-password"
+                  placeholder="············"
+                  :type="isConfirmPasswordVisible ? 'text' : 'password'"
+                  :rules="[requiredValidator]"
+                  :append-inner-icon="isConfirmPasswordVisible ? 'tabler-eye-off' : 'tabler-eye'"
+                  @click:append-inner="isConfirmPasswordVisible = !isConfirmPasswordVisible"
                 />
               </VCol>
 
@@ -79,7 +102,7 @@ const form = ref({ email: '' })
                   block
                   type="submit"
                 >
-                  Send Reset Link
+                  Set New Password
                 </VBtn>
               </VCol>
 

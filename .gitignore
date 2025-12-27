@@ -65,3 +65,8 @@ public/mockServiceWorker.js
 # Env files
 .env*
 !.env.example
+
+y
+y.pub
+
+VUEXY_CUSTOMIZATION_GUIDE.md
