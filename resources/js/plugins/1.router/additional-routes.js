@@ -14,7 +14,7 @@ export const redirects = [
       if (userRole === 'admin')
         return { name: 'dashboards-crm' }
       if (userRole === 'client')
-        return { name: 'access-control' }
+        return { name: 'dashboards-analytics' }
       
       return { name: 'login', query: to.query }
     },

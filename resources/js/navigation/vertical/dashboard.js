@@ -2,10 +2,14 @@ export default [
   {
     title: 'Dashboards',
     icon: { icon: 'tabler-smart-home' },
+    action: 'read',
+    subject: 'all',
     children: [
       {
         title: 'Analytics',
         to: 'dashboards-analytics',
+        action: 'read',
+        subject: 'all',
       },
       {
         title: 'CRM',

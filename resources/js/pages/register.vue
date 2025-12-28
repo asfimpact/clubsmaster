@@ -13,14 +13,70 @@ definePage({
   },
 })
 
+const router = useRouter()
+const ability = useAbility()
+
 const form = ref({
-  username: '',
+  first_name: '',
+  last_name: '',
   email: '',
   password: '',
   privacyPolicies: false,
 })
 
+const errors = ref({
+  first_name: undefined,
+  last_name: undefined,
+  email: undefined,
+  password: undefined,
+})
+
+const refVForm = ref()
 const isPasswordVisible = ref(false)
+
+const termErrors = ref([])
+
+const register = async () => {
+  try {
+    const res = await $api('/auth/register', {
+      method: 'POST',
+      body: {
+        first_name: form.value.first_name,
+        last_name: form.value.last_name,
+        email: form.value.email,
+        password: form.value.password,
+      },
+      onResponseError({ response }) {
+        errors.value = response._data.errors
+      },
+    })
+
+    const { accessToken, userData, userAbilityRules } = res
+
+    useCookie('userAbilityRules').value = userAbilityRules
+    ability.update(userAbilityRules)
+    useCookie('userData').value = userData
+    useCookie('accessToken').value = accessToken
+
+    // Redirect to index route
+    await router.push('/')
+  } catch (err) {
+    console.error(err)
+  }
+}
+
+const onSubmit = () => {
+  termErrors.value = []
+  
+  if (!form.value.privacyPolicies) {
+    termErrors.value = ['Please agree to the privacy policy']
+  }
+
+  refVForm.value?.validate().then(({ valid: isValid }) => {
+    if (isValid && form.value.privacyPolicies)
+      register()
+  })
+}
 </script>
 
 <template>
@@ -67,18 +123,40 @@ const isPasswordVisible = ref(false)
         </VCardText>
 
         <VCardText>
-          <VForm @submit.prevent="() => {}">
+          <VForm
+            ref="refVForm"
+            @submit.prevent="onSubmit"
+          >
             <VRow>
-              <!-- Username -->
-              <VCol cols="12">
+              <!-- First Name -->
+              <VCol
+                cols="12"
+                sm="6"
+              >
                 <AppTextField
-                  v-model="form.username"
+                  v-model="form.first_name"
                   autofocus
-                  label="Username"
-                  placeholder="Johndoe"
+                  label="First Name"
+                  placeholder="John"
                   :rules="[requiredValidator]"
+                  :error-messages="errors.first_name"
                 />
               </VCol>
+
+              <!-- Last Name -->
+              <VCol
+                cols="12"
+                sm="6"
+              >
+                <AppTextField
+                  v-model="form.last_name"
+                  label="Last Name"
+                  placeholder="Doe"
+                  :rules="[requiredValidator]"
+                  :error-messages="errors.last_name"
+                />
+              </VCol>
+
               <!-- email -->
               <VCol cols="12">
                 <AppTextField
@@ -87,6 +165,7 @@ const isPasswordVisible = ref(false)
                   type="email"
                   placeholder="johndoe@email.com"
                   :rules="[requiredValidator, emailValidator]"
+                  :error-messages="errors.email"
                 />
               </VCol>
 
@@ -98,27 +177,26 @@ const isPasswordVisible = ref(false)
                   placeholder="············"
                   :type="isPasswordVisible ? 'text' : 'password'"
                   autocomplete="password"
-                  :rules="[requiredValidator]"
+                  :rules="[requiredValidator, (v) => v.length >= 8 || 'The password field must be at least 8 characters']"
+                  :error-messages="errors.password"
                   :append-inner-icon="isPasswordVisible ? 'tabler-eye-off' : 'tabler-eye'"
                   @click:append-inner="isPasswordVisible = !isPasswordVisible"
                 />
 
-                <div class="d-flex align-center my-6">
+                <div class="my-6">
                   <VCheckbox
                     id="privacy-policy"
                     v-model="form.privacyPolicies"
-                    inline
-                  />
-                  <VLabel
-                    for="privacy-policy"
-                    style="opacity: 1;"
+                    :error-messages="termErrors"
                   >
-                    <span class="me-1 text-high-emphasis">I agree to</span>
-                    <a
-                      href="javascript:void(0)"
-                      class="text-primary"
-                    >privacy policy & terms</a>
-                  </VLabel>
+                    <template #label>
+                      <span class="me-1 text-high-emphasis">I agree to</span>
+                      <a
+                        href="javascript:void(0)"
+                        class="text-primary"
+                      >privacy policy & terms</a>
+                    </template>
+                  </VCheckbox>
                 </div>
 
                 <VBtn
