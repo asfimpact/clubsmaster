@@ -28,7 +28,6 @@ class AuthController extends Controller
             ], 422);
         }
 
-        // Note: Password will be hashed automatically by the User model's 'hashed' cast
         $user = User::create([
             'first_name' => $request->first_name,
             'last_name' => $request->last_name,
@@ -39,13 +38,17 @@ class AuthController extends Controller
 
         $accessToken = $user->createToken('accessToken')->plainTextToken;
 
-        // Temporary: Give full control to both roles to bypass redirect loops during development
-        $userAbilityRules = [
-            [
-                'action' => 'manage',
-                'subject' => 'all',
-            ],
-        ];
+        // 👉 Vuexy Standard Simplest ACL
+        if ($user->role === 'admin') {
+            $userAbilityRules = [
+                ['action' => 'manage', 'subject' => 'all'],
+            ];
+        } else {
+            // Clients use the standard restricted subject
+            $userAbilityRules = [
+                ['action' => 'read', 'subject' => 'AclDemo'],
+            ];
+        }
 
         return response()->json([
             'accessToken' => $accessToken,
@@ -86,13 +89,17 @@ class AuthController extends Controller
         $user = Auth::user();
         $accessToken = $user->createToken('accessToken')->plainTextToken;
 
-        // Temporary: Give full control to both roles to bypass redirect loops during development
-        $userAbilityRules = [
-            [
-                'action' => 'manage',
-                'subject' => 'all',
-            ],
-        ];
+        // 👉 Vuexy Standard Simplest ACL
+        if ($user->role === 'admin') {
+            $userAbilityRules = [
+                ['action' => 'manage', 'subject' => 'all'],
+            ];
+        } else {
+            // Clients use the standard restricted subject
+            $userAbilityRules = [
+                ['action' => 'read', 'subject' => 'AclDemo'],
+            ];
+        }
 
         return response()->json([
             'accessToken' => $accessToken,

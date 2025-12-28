@@ -1,3 +1,39 @@
+[2025-12-28] - Client Portal & Simplest ACL Migration
+🚀 Major Improvements
+- Client Dashboard (Portal): Created a dedicated landing page at / specifically for Clients. Features KPI cards for Membership Plan details, Expiry Dates, and a direct integration of the theme's Pricing component.
+- Simplest Vuexy Standard ACL: Refactored the entire permission system to follow a lean "Standard" approach. Any page or menu item without explicit ACL meta is now shared by default, eliminating over-engineering.
+- Permanent Admin Seeder: Implemented updateOrCreate logic in DatabaseSeeder.php to establish a permanent admin account (admin@clubmaster.com) for testing.
+- Centralized Backups: Moved all original navigation and demo files to a root /backups directory and added it to .gitignore to keep the codebase clean.
+🔐 Authentication & UI
+- Smart Redirection: Implemented a "Traffic Controller" logic in the home page. Admins are automatically pushed to the CRM Dashboard, while Clients land on their personal Portal.
+- Sidebar Cleanup: Restructured the side navigation into three focused business sections: Dashboard, Business Management, and System Settings.
+- Translation Fixes: Added missing i18n keys to en.json to resolve console warnings for the new custom sidebar sections.
+- Auth Data Handshake: Verified the userAbilityRules transmission between Laravel and Vue, ensuring the sidebar renders instantly upon login.
+🛠️ Technical Fixes
+- CASL Utility Fix: Resolved a critical bug in casl.js by importing getCurrentInstance from Vue. This fixed a silent crash that was preventing the sidebar from rendering.
+- Router Collision: Removed manual root redirection in additional-routes.js that was conflicting with the file-based router.
+- Shared Access: Updated the can and canNavigate utilities to allow access to "blank" meta pages, ensuring a smooth multi-role experience.
+📁 Files Modified/Added
+Backend:
+app/Http/Controllers/AuthController.php
+database/seeders/DatabaseSeeder.php
+Navigation:
+resources/js/navigation/vertical/index.js
+resources/js/navigation/vertical/dashboard.js
+resources/js/navigation/vertical/business.js (NEW)
+resources/js/navigation/vertical/system.js (NEW)
+Pages & Components:
+resources/js/pages/index.vue (NEW)
+resources/js/pages/business-membership-history.vue (NEW)
+resources/js/pages/business-payment-history.vue (NEW)
+resources/js/pages/dashboards/analytics.vue
+Core Plugins:
+resources/js/@layouts/plugins/casl.js
+resources/js/plugins/i18n/locales/en.json
+resources/js/plugins/1.router/additional-routes.js
+**Commit**
+[pending] - Client Portal Dashboard, Sidebar Cleanup, and Simplest ACL Migration
+
 ## [2025-12-28] - Sanctum Auth & Role Integration Client User Login
 ### 🚀 Major Improvements
 - **Real Backend Integration:** Shifted from Mock API (MSW) to a live Laravel 12 backend. Authenticated requests now hit the real MySQL database.
@@ -30,7 +66,7 @@
 - resources/js/plugins/casl/index.js
 - resources/js/plugins/fake-api/index.js
 **Commit**
-[pending] - Sanctum Auth & Role Integration Client User Login
+[e3b0099] - Sanctum Auth & Role Integration Client User Login
 
 
 # [27-12-2025] - Changelog - Clubsmaster Project

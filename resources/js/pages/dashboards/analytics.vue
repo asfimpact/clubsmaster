@@ -11,10 +11,6 @@ import AnalyticsTotalEarning from '@/views/dashboards/analytics/AnalyticsTotalEa
 import AnalyticsWebsiteAnalytics from '@/views/dashboards/analytics/AnalyticsWebsiteAnalytics.vue'
 
 definePage({
-  meta: {
-    action: 'manage',
-    subject: 'all',
-  },
 })
 </script>
 
