@@ -1,3 +1,39 @@
+### [2025-12-28] - Admin Member Management, Pricing Architecture & Security Pulse
+# Major Improvements
+- **Admin Members Dashboard:** Implemented a high-performance Member Management module using `VDataTable`. Includes Name/Avatar display, Email-Phone merged cells, and responsive action menus (View, Edit, Suspend, Delete).
+- **Advanced Filtering & Search:** Added reactive status (Active, Suspended, Pending, Inactive) and Membership Plan filters with real-time search debounced for performance.
+- **Billing Architecture:** Created a relational database system with `plans` and `subscriptions` tables. Implemented the **Laravel Eager Loading** standard (`with(['subscription.plan'])`) to ensure N+1 performance protection.
+- **Pricing Management:** Built a full CRUD interface for Admins to manage membership tiers (Price, Duration, Name) with integrated safety checks for active subscriptions.
+### 🔐 Security & "Pulse" Tracking
+- **Dynamic Security Status:** Refactored user status into a `computed_status` virtual attribute. Status now reflects real-time security logic: **Suspended** (Admin flag), **Pending** (Email verification), **Inactive** (Global 2FA required but missing), or **Active**.
+- **Global Security Toggle:** Created a Security Settings page with a global 2FA switch. Toggling this instantly recalibrates user access statuses across the entire portal.
+- **User Pulse Middleware:** Implemented `UpdateLastActivity` middleware to track "Time Ago" activity (e.g., "5 mins ago") in the Admin table, with a 1-minute throttle for DB performance.
+- **Headless Export:** Implemented a browser-side CSV export utility to download filtered member lists without impacting server load.
+### 🛠️ Technical Improvements
+- **Development Standards:** Established `DEVELOPMENT_STANDARDS.md` to mandate Eager Loading and high-security architectural rules.
+- **Vuetify I18n Patch:** Resolved raw key displays (e.g., `$vuetify.dataIterator.loadingText`) by mapping missing translations in `en.json`.
+- **Safety Dialogs:** Integrated the theme's `ConfirmDialog` for all sensitive operations (Suspend, Individual Delete, Bulk Delete).
+- **Clean DB Schema:** Removed redundant `last_login_at` columns and consolidated activity tracking.
+### 📁 Files Modified/Added
+- **Backend (Laravel):**
+  - app/Http/Controllers/Admin/MemberController.php
+  - app/Http/Controllers/Admin/PlanController.php (NEW)
+  - app/Http/Controllers/Admin/SettingController.php (NEW)
+  - app/Http/Middleware/UpdateLastActivity.php (NEW)
+  - app/Models/User.php
+  - app/Models/Plan.php (NEW)
+  - app/Models/Subscription.php (NEW)
+  - database/migrations/* (5 New Migrations)
+- **Frontend (Vue):**
+  - resources/js/pages/admin/members/index.vue (NEW)
+  - resources/js/pages/admin/pricing-mgmt.vue (NEW)
+  - resources/js/pages/admin/security-mgmt.vue (NEW)
+  - resources/js/navigation/vertical/admin.js (NEW)
+  - resources/js/@core/utils/formatters.js
+  - resources/js/plugins/i18n/locales/en.json
+**Commit**
+[pending] - Admin Member Management, Pricing Architecture, and Security Pulse Logic.
+
 [2025-12-28] - Client Portal & Simplest ACL Migration
 🚀 Major Improvements
 - Client Dashboard (Portal): Created a dedicated landing page at / specifically for Clients. Features KPI cards for Membership Plan details, Expiry Dates, and a direct integration of the theme's Pricing component.
@@ -32,7 +68,7 @@ resources/js/@layouts/plugins/casl.js
 resources/js/plugins/i18n/locales/en.json
 resources/js/plugins/1.router/additional-routes.js
 **Commit**
-[pending] - Client Portal Dashboard, Sidebar Cleanup, and Simplest ACL Migration
+[2d7c9e0] - Client Portal Dashboard, Sidebar Cleanup, and Simplest ACL Migration
 
 ## [2025-12-28] - Sanctum Auth & Role Integration Client User Login
 ### 🚀 Major Improvements
