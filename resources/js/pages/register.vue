@@ -20,6 +20,7 @@ const form = ref({
   first_name: '',
   last_name: '',
   email: '',
+  phone: '',
   password: '',
   privacyPolicies: false,
 })
@@ -28,6 +29,7 @@ const errors = ref({
   first_name: undefined,
   last_name: undefined,
   email: undefined,
+  phone: undefined,
   password: undefined,
 })
 
@@ -44,6 +46,7 @@ const register = async () => {
         first_name: form.value.first_name,
         last_name: form.value.last_name,
         email: form.value.email,
+        phone: form.value.phone,
         password: form.value.password,
       },
       onResponseError({ response }) {
@@ -158,7 +161,7 @@ const onSubmit = () => {
               </VCol>
 
               <!-- email -->
-              <VCol cols="12">
+                <VCol cols="12">
                 <AppTextField
                   v-model="form.email"
                   label="Email"
@@ -166,6 +169,17 @@ const onSubmit = () => {
                   placeholder="johndoe@email.com"
                   :rules="[requiredValidator, emailValidator]"
                   :error-messages="errors.email"
+                />
+              </VCol>
+
+              <!-- Phone -->
+              <VCol cols="12">
+                <AppTextField
+                  v-model="form.phone"
+                  label="Mobile Number"
+                  placeholder="+1234567890"
+                  :rules="[requiredValidator]"
+                  :error-messages="errors.phone"
                 />
               </VCol>
 

@@ -15,7 +15,14 @@ export const setupGuards = router => {
          * Check if user is logged in by checking if token & user data exists in local storage
          * Feel free to update this logic to suit your needs
          */
-    const isLoggedIn = !!(useCookie('userData').value && useCookie('accessToken').value)
+    const userData = useCookie('userData').value
+    const isLoggedIn = !!(userData && useCookie('accessToken').value)
+
+    if (isLoggedIn && (userData.status === 'Pending' || userData.status === 'Inactive')) {
+      if (to.name !== 'pages-authentication-two-steps-v1' && !to.meta.unauthenticatedOnly) {
+        return { name: 'pages-authentication-two-steps-v1' }
+      }
+    }
 
     /*
           If user is logged in and is trying to access login like page, redirect to home
@@ -28,6 +35,19 @@ export const setupGuards = router => {
       else
         return undefined
     }
+    /*
+     * If not logged in and page is not public, redirect to login
+     */
+    if (!isLoggedIn) {
+      return {
+        name: 'login',
+        query: {
+          ...to.query,
+          to: to.fullPath !== '/' ? to.path : undefined,
+        },
+      }
+    }
+
     if (!canNavigate(to) && to.matched.length) {
       /* eslint-disable indent */
             return isLoggedIn

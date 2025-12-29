@@ -1,40 +1,144 @@
-### [2025-12-28] - Admin Member Management, Pricing Architecture & Security Pulse
-# Major Improvements
-- **Admin Members Dashboard:** Implemented a high-performance Member Management module using `VDataTable`. Includes Name/Avatar display, Email-Phone merged cells, and responsive action menus (View, Edit, Suspend, Delete).
-- **Advanced Filtering & Search:** Added reactive status (Active, Suspended, Pending, Inactive) and Membership Plan filters with real-time search debounced for performance.
-- **Billing Architecture:** Created a relational database system with `plans` and `subscriptions` tables. Implemented the **Laravel Eager Loading** standard (`with(['subscription.plan'])`) to ensure N+1 performance protection.
-- **Pricing Management:** Built a full CRUD interface for Admins to manage membership tiers (Price, Duration, Name) with integrated safety checks for active subscriptions.
-### 🔐 Security & "Pulse" Tracking
-- **Dynamic Security Status:** Refactored user status into a `computed_status` virtual attribute. Status now reflects real-time security logic: **Suspended** (Admin flag), **Pending** (Email verification), **Inactive** (Global 2FA required but missing), or **Active**.
-- **Global Security Toggle:** Created a Security Settings page with a global 2FA switch. Toggling this instantly recalibrates user access statuses across the entire portal.
-- **User Pulse Middleware:** Implemented `UpdateLastActivity` middleware to track "Time Ago" activity (e.g., "5 mins ago") in the Admin table, with a 1-minute throttle for DB performance.
-- **Headless Export:** Implemented a browser-side CSV export utility to download filtered member lists without impacting server load.
-### 🛠️ Technical Improvements
-- **Development Standards:** Established `DEVELOPMENT_STANDARDS.md` to mandate Eager Loading and high-security architectural rules.
-- **Vuetify I18n Patch:** Resolved raw key displays (e.g., `$vuetify.dataIterator.loadingText`) by mapping missing translations in `en.json`.
-- **Safety Dialogs:** Integrated the theme's `ConfirmDialog` for all sensitive operations (Suspend, Individual Delete, Bulk Delete).
-- **Clean DB Schema:** Removed redundant `last_login_at` columns and consolidated activity tracking.
-### 📁 Files Modified/Added
-- **Backend (Laravel):**
-  - app/Http/Controllers/Admin/MemberController.php
-  - app/Http/Controllers/Admin/PlanController.php (NEW)
-  - app/Http/Controllers/Admin/SettingController.php (NEW)
-  - app/Http/Middleware/UpdateLastActivity.php (NEW)
-  - app/Models/User.php
-  - app/Models/Plan.php (NEW)
-  - app/Models/Subscription.php (NEW)
-  - database/migrations/* (5 New Migrations)
-- **Frontend (Vue):**
-  - resources/js/pages/admin/members/index.vue (NEW)
-  - resources/js/pages/admin/pricing-mgmt.vue (NEW)
-  - resources/js/pages/admin/security-mgmt.vue (NEW)
-  - resources/js/navigation/vertical/admin.js (NEW)
-  - resources/js/@core/utils/formatters.js
-  - resources/js/plugins/i18n/locales/en.json
+## [29-12-2025] -  2FA Email OTP Security System, Email Server config in admin & Mobile field in signup page Integration and fixes
+**Key Features:** Email one-time password (OTP) System, SMTP Configuration, Mobile Number Support, and Router Security Hardening.
+# Backend Changes
+- **[app/Http/Controllers/AuthController.php]
+    - Updated [login] and [register] to automatically trigger 2FA code generation (server-side security).
+    - Added validation and storage for the new `phone` field during registration.
+    - Updated responses to include `mobile` in the `userData` object.
+- **[app/Http/Controllers/Auth/TwoFactorController.php]
+    - Created controller to handle OTP verification and manual code resends.
+    - Implemented dynamic SMTP configuration (reads from DB instead of .env).
+- **[app/Http/Controllers/Admin/SettingController.php]
+    - Added `testEmail` method to valid real-time SMTP connections.
+- **[app/Models/User.php]
+    - Added `two_factor_code` and `two_factor_expires_at` to `$fillable`.
+    - Added `two_factor_expires_at` into `$casts` (Carbon instance).
+    - Refined `computed_status` to trap `Pending` (unverified email) and `Inactive` (unverified 2FA) users.
+- **[database/migrations/2025_12_29_141324_add_2fa_codes_to_users_table.php] (New)**
+    - Migration to support persistent OTP storage and expiration times.
+### Frontend Changes
+- **[resources/js/pages/admin/email-settings.vue] (New)**
+    - Full interface for configuring SMTP Host, Port, User, Password, and Encryption.
+    - Added "Test Connection" card with real-time success/error feedback.
+- **[resources/js/pages/admin/security-mgmt.vue]
+    - Renamed toggle to "Require 2FA (Email OTP)" for technical accuracy.
+- **[resources/js/pages/pages/authentication/two-steps-v1.vue] 
+    - Transformed from static demo to functional Verification Gate.
+    - Removed auto-trigger (fixed double-email bug).
+    - Added "Hard Refresh" logic to ensure Router Guards respect the new active status.
+- **[resources/js/plugins/1.router/guards.js]
+    - **Security Fix:** Added strict redirection for unauthenticated users (stops "Ghost Client" access).
+    - **Logic:** Implemented the "Iron Gate" that traps `Pending`/`Inactive` users in the 2FA flow.
+- **[resources/js/pages/register.vue]
+    - Added "Mobile Number" input field to the signup form.
+- **[resources/js/layouts/components/UserProfile.vue]
+    - Added logic to display the user's mobile number under their name.
+- **[resources/js/navigation/vertical/admin.js]
+    - Added "Email Server" to the System Configuration menu.
+Here’s a cleaned-up version with all repeated lines removed:
 **Commit**
-[pending] - Admin Member Management, Pricing Architecture, and Security Pulse Logic.
+[pending]- 2FA Email OTP Security System, Email Server config in admin & Mobile field in signup page Integration and fixes
 
-[2025-12-28] - Client Portal & Simplest ACL Migration
+
+[28-12-2025] - Admin Member Management, Pricing Architecture, and Security Pulse Logic
+- Key Features: Headless Member Management, Plan CRUD, and User Activity Tracking.
+- Advanced Filtering & Search: Added reactive status filters (Active, Suspended, Pending, Inactive) with real-time debounced search.
+- Billing Architecture: Created relational database with plans and subscriptions tables. Implemented Laravel Eager Loading to ensure N+1 performance protection.
+- Pricing Management: Built full CRUD interface for Admins to manage membership tiers (Price, Duration, Name), with safety checks for active subscriptions.
+🔐 Security & "Pulse" Tracking
+- Dynamic Security Status: Refactored user status into a computed_status virtual attribute. Status now reflects real-time security logic: Suspended, Pending, Inactive, or Active.
+- Global Security Toggle: Created a Security Settings page with global 2FA switch. Toggling recalibrates user access statuses across the portal.
+- User Pulse Middleware: Implemented UpdateLastActivity middleware to track activity time with 1-minute throttle for performance.
+- Headless Export: Implemented browser-side CSV export for member lists without server load.
+🛠️ Technical Improvements
+- Development Standards: Established DEVELOPMENT_STANDARDS.md to mandate Eager Loading and high-security architectural rules.
+- Vuetify I18n Patch: Resolved raw key displays in en.json.
+- Safety Dialogs: Integrated theme's ConfirmDialog for sensitive operations (Suspend, Individual Delete, Bulk Delete).
+- Clean DB Schema: Removed redundant last_login_at columns and consolidated activity tracking.
+Backend Changes
+- [app/Http/Controllers/Admin/MemberController.php]
+- Implemented index (list), update (status), and destroy (delete) methods.
+- Added "Bulk Delete" logic.
+- [app/Http/Controllers/Admin/PlanController.php]
+- CRUD operations for Membership Plans.
+- [app/Http/Middleware/UpdateLastActivity.php]
+- Middleware to track last_activity_at (User Pulse) with 1-minute throttling.
+- database/migrations/2025_12_28_..._remove_redundant_login_column.php
+- Removed last_login_at in favor of the more accurate last_activity_at.
+Frontend Changes
+- [resources/js/pages/admin/members/index.vue]
+- VDataTable implementation with Status Chips, Search, and Bulk Actions.
+- [resources/js/pages/admin/pricing-mgmt.vue]
+- UI for creating and managing Membership Plans.
+- [resources/js/pages/admin/security-mgmt.vue]
+- Initial UI for Global Security Settings (2FA Toggle).
+Admin Members Dashboard: High-performance Member Management using VDataTable. Includes Name/Avatar display, Email-Phone merged cells, and responsive action menus (View, Edit, Suspend, Delete).
+📁 Files Modified/Added
+Backend (Laravel):
+- app/Http/Controllers/Admin/MemberController.php
+- app/Http/Controllers/Admin/PlanController.php (NEW)
+- app/Http/Controllers/Admin/SettingController.php (NEW)
+- app/Http/Middleware/UpdateLastActivity.php (NEW)
+- app/Models/User.php
+- app/Models/Plan.php (NEW)
+- app/Models/Subscription.php (NEW)
+- database/migrations/* (5 New Migrations)
+app/Http/Controllers/AuthController.php
+- Updated login and register methods to automatically trigger 2FA code generation.
+- Added phone field validation and storage in register.
+- Added mobile field to the returned userData object.
+app/Http/Controllers/Auth/TwoFactorController.php (New)
+- Created controller to handle verify (code checking) and send (manual resends).
+- Implemented dynamic SMTP configuration using database settings.
+app/Http/Controllers/Admin/SettingController.php
+- Added testEmail method to validate SMTP credentials.
+- Updated to support email server configuration fields.
+app/Models/User.php
+- Added two_factor_code and two_factor_expires_at to $fillable.
+- Implemented computed_status accessor for dynamic status calculation (Active/Inactive/Pending).
+database/migrations/2025_12_29_141324_add_2fa_codes_to_users_table.php (New)
+- Created migration to add 2FA logic columns to users table.
+Frontend (Vue):
+- resources/js/pages/admin/members/index.vue (NEW)
+- resources/js/pages/admin/pricing-mgmt.vue (NEW)
+- resources/js/pages/admin/security-mgmt.vue (NEW)
+- resources/js/navigation/vertical/admin.js (NEW)
+- resources/js/@core/utils/formatters.js
+- resources/js/plugins/i18n/locales/en.json
+- resources/js/pages/admin/email-settings.vue (NEW)
+- Created Admin UI for configuring SMTP server details.
+- Added "Test Connection" functionality.
+- resources/js/pages/admin/security-mgmt.vue
+- Updated labels for "Require 2FA (Email OTP)".
+- Refined descriptions for clarity.
+- resources/js/pages/pages/authentication/two-steps-v1.vue
+- Removed auto-trigger from onMounted.
+- Disabled auto-submit on input finish.
+- Implemented "Hard Refresh" redirect logic for reliability.
+- resources/js/pages/register.vue
+- Added "Mobile Number" input field.
+- Updated script to handle phone data submission.
+- resources/js/layouts/components/UserProfile.vue
+- Updated template to display userData.mobile below the user's name.
+- resources/js/navigation/vertical/admin.js
+- Added "Email Server" navigation item.
+- resources/js/plugins/1.router/guards.js
+- Implemented strict redirection for unauthenticated users.
+- Added guard to trap Pending/Inactive users in the 2FA flow.
+- resources/js/pages/index.vue
+- Updated logic to redirect Pending users to 2FA page.
+- resources/js/plugins/i18n/locales/en.json
+- Added localization keys for "Email Server" and updated Security Settings labels.
+- routes/api.php
+- Registered auth/2fa-send and auth/2fa-verify routes.
+- Registered admin/settings/test-email route.
+- typed-router.d.ts
+- Updated by the system to reflect new routes (auto-generated).
+Commit
+[c7b846d] - Admin Member Management, Pricing Architecture, and Security Pulse Logic.
+
+
+#### [2025-12-28] - Client Portal & Simplest ACL Migration
 🚀 Major Improvements
 - Client Dashboard (Portal): Created a dedicated landing page at / specifically for Clients. Features KPI cards for Membership Plan details, Expiry Dates, and a direct integration of the theme's Pricing component.
 - Simplest Vuexy Standard ACL: Refactored the entire permission system to follow a lean "Standard" approach. Any page or menu item without explicit ACL meta is now shared by default, eliminating over-engineering.

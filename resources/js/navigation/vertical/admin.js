@@ -30,4 +30,11 @@ export default [
     action: 'manage',
     subject: 'Admin',
   },
+  {
+    title: 'Email Server',
+    icon: { icon: 'tabler-mail-cog' },
+    to: { name: 'admin-email-settings' },
+    action: 'manage',
+    subject: 'Admin',
+  },
 ]

@@ -5,23 +5,78 @@ import { VNodeRenderer } from '@layouts/components/VNodeRenderer'
 import { themeConfig } from '@themeConfig'
 
 definePage({
+  name: 'pages-authentication-two-steps-v1',
   meta: {
     layout: 'blank',
-    public: true,
+    public: true, // Needs to be public so the landing page can redirect here, but protected by logic
   },
 })
 
 const router = useRouter()
+const userData = useCookie('userData')
 const otp = ref('')
-const isOtpInserted = ref(false)
+const loading = ref(false)
+const resending = ref(false)
+const errorMessage = ref('')
+
+const sendCode = async () => {
+  resending.value = true
+  errorMessage.value = ''
+  try {
+    await $api('/auth/2fa-send', { method: 'POST' })
+  } catch (error) {
+    errorMessage.value = 'Failed to send code. Please try again.'
+  } finally {
+    resending.value = false
+  }
+}
+
+const verifyCode = async () => {
+  if (loading.value || otp.value.length !== 6) return
+  
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const response = await $api('/auth/2fa-verify', {
+      method: 'POST',
+      body: { code: otp.value },
+    })
+    
+    // 1. Force update local user data from response or fetch fresh
+    if (response.userData) {
+        userData.value = response.userData
+        useCookie('userData').value = response.userData
+    } else {
+        // Fallback: manually patch if backend didn't send full object
+        if (userData.value) userData.value.status = 'Active'
+    }
+
+    // 2. Wait a tick to ensure cookie is set
+    await nextTick()
+    
+    // 3. Redirect
+    window.location.href = '/' // Hard reload to bypass any stuck router state
+  } catch (error) {
+    const data = error.response?._data
+    errorMessage.value = data?.message || 'Invalid or expired code.'
+    if (data?.debug) {
+      errorMessage.value += ` | Debug: User ${data.debug.user_id}, Sent: ${data.debug.sent_code}, Stored: ${data.debug.stored_code}, Match: ${data.debug.is_match}, Expiry: ${data.debug.is_not_expired}`
+    }
+    otp.value = ''
+  } finally {
+    loading.value = false
+  }
+}
 
 const onFinish = () => {
-  isOtpInserted.value = true
-  setTimeout(() => {
-    isOtpInserted.value = false
-    router.push('/')
-  }, 2000)
+  verifyCode()
 }
+
+onMounted(() => {
+  if (!userData.value) {
+    router.push('/login')
+  }
+})
 </script>
 
 <template>
@@ -63,35 +118,40 @@ const onFinish = () => {
             Two Step Verification 💬
           </h4>
           <p class="mb-1">
-            We sent a verification code to your mobile. Enter the code from the mobile in the field below.
+            We sent a verification code to your email. Enter the code in the field below to access your account.
           </p>
           <h6 class="text-h6">
-            ******1234
+            {{ userData?.email }}
           </h6>
         </VCardText>
 
         <VCardText>
-          <VForm @submit.prevent="() => {}">
+          <VAlert
+            v-if="errorMessage"
+            color="error"
+            variant="tonal"
+            class="mb-4"
+          >
+            {{ errorMessage }}
+          </VAlert>
+
+          <VForm @submit.prevent="verifyCode">
             <VRow>
-              <!-- email -->
               <VCol cols="12">
                 <h6 class="text-body-1">
                   Type your 6 digit security code
                 </h6>
                 <VOtpInput
                   v-model="otp"
-                  :disabled="isOtpInserted"
+                  :disabled="loading"
                   type="number"
                   class="pa-0"
-                  @finish="onFinish"
                 />
               </VCol>
 
-              <!-- reset password -->
               <VCol cols="12">
                 <VBtn
-                  :loading="isOtpInserted"
-                  :disabled="isOtpInserted"
+                  :loading="loading"
                   block
                   type="submit"
                 >
@@ -99,11 +159,16 @@ const onFinish = () => {
                 </VBtn>
               </VCol>
 
-              <!-- back to login -->
               <VCol cols="12">
                 <div class="d-flex justify-center align-center flex-wrap">
                   <span class="me-1">Didn't get the code?</span>
-                  <a href="#">Resend</a>
+                  <a
+                    href="javascript:void(0)"
+                    :class="{ 'opacity-50 pointer-events-none': resending }"
+                    @click="sendCode"
+                  >
+                    {{ resending ? 'Sending...' : 'Resend' }}
+                  </a>
                 </div>
               </VCol>
             </VRow>

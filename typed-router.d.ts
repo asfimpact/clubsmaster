@@ -21,6 +21,7 @@ declare module 'vue-router/auto-routes' {
     'index': RouteRecordInfo<'index', '/', Record<never, never>, Record<never, never>>,
     '$error': RouteRecordInfo<'$error', '/:error(.*)', { error: ParamValue<true> }, { error: ParamValue<false> }>,
     'access-control': RouteRecordInfo<'access-control', '/access-control', Record<never, never>, Record<never, never>>,
+    'admin-email-settings': RouteRecordInfo<'admin-email-settings', '/admin/email-settings', Record<never, never>, Record<never, never>>,
     'admin-members': RouteRecordInfo<'admin-members', '/admin/members', Record<never, never>, Record<never, never>>,
     'admin-members-view-id': RouteRecordInfo<'admin-members-view-id', '/admin/members/view/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
     'admin-pricing-mgmt': RouteRecordInfo<'admin-pricing-mgmt', '/admin/pricing-mgmt', Record<never, never>, Record<never, never>>,

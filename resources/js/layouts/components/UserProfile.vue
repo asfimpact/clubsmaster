@@ -140,9 +140,12 @@ const userProfileList = [
                 <h6 class="text-h6 font-weight-medium">
                   {{ userData.fullName || userData.username }}
                 </h6>
-                <VListItemSubtitle class="text-capitalize text-disabled">
-                  {{ userData.role }}
-                </VListItemSubtitle>
+                <div class="d-flex flex-column">
+                  <span class="text-caption text-disabled mb-1">{{ userData.mobile }}</span>
+                  <VListItemSubtitle class="text-capitalize text-disabled">
+                    {{ userData.role }}
+                  </VListItemSubtitle>
+                </div>
               </div>
             </div>
           </VListItem>

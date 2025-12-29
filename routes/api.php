@@ -12,6 +12,11 @@ Route::get('/user', function (Request $request) {
 Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register']);
     Route::post('login', [AuthController::class, 'login']);
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('2fa-send', [\App\Http\Controllers\Auth\TwoFactorController::class, 'send']);
+        Route::post('2fa-verify', [\App\Http\Controllers\Auth\TwoFactorController::class, 'verify']);
+    });
 });
 
 // Admin Group
@@ -28,5 +33,6 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
     // Global Settings
     Route::get('settings', [\App\Http\Controllers\Admin\SettingController::class, 'index']);
     Route::patch('settings', [\App\Http\Controllers\Admin\SettingController::class, 'update']);
+    Route::post('settings/test-email', [\App\Http\Controllers\Admin\SettingController::class, 'testEmail']);
 });
 

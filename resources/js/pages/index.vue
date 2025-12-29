@@ -6,7 +6,12 @@ definePage({
   name: 'index',
 })
 
-// Redirect Admins to CRM Dashboard
+// 1. If Inactive (needs 2FA) or Pending (New User Email Verify), redirect to verification
+if (userData.value?.status === 'Inactive' || userData.value?.status === 'Pending') {
+  router.replace({ name: 'pages-authentication-two-steps-v1' })
+}
+
+// 2. Redirect Admins to CRM Dashboard
 if (userData.value?.role === 'admin') {
   router.replace({ name: 'dashboards-crm' })
 }

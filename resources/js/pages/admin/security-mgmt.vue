@@ -56,9 +56,9 @@ onMounted(fetchSettings)
 
           <div class="d-flex align-center justify-space-between mb-4">
             <div>
-              <h6 class="text-h6 mb-1">Require 2FA (TOTP)</h6>
+              <h6 class="text-h6 mb-1">Require 2FA (Email OTP)</h6>
               <p class="text-sm text-disabled mb-0">
-                When enabled, all users without a verified 2FA will be marked as "Inactive".
+                When enabled, all users without a verified Email OTP will be marked as "Inactive".
               </p>
             </div>
             <VSwitch
@@ -93,7 +93,7 @@ onMounted(fetchSettings)
           
           <ul class="text-body-2 ps-6">
             <li class="mb-2"><strong>Active:</strong> Email verified and 2FA verified (if required).</li>
-            <li class="mb-2"><strong>Inactive:</strong> Logged in but missing active 2FA verification.</li>
+            <li class="mb-2"><strong>Inactive:</strong> Logged in but missing active Email OTP verification.</li>
             <li class="mb-2"><strong>Pending:</strong> User has registered but not yet verified their email address.</li>
             <li><strong>Suspended:</strong> Manually blocked by an administrator.</li>
           </ul>
