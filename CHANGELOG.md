@@ -1,3 +1,176 @@
+#### [29-12-2025] - Profile and account settins changes, Plan management and Subscription Management System implementation and enhancements for future integration with other systems.
+## 📊 Added Database
+- **Plans Table Enhancements**:
+  - Added `features` (JSON) column for dynamic feature lists
+  - Added `tagline` (String) column for plan descriptions
+  - Added `yearly_price` (Decimal) column for yearly pricing
+  - Added `yearly_duration_days` (Integer, default 365) as Source of Truth for yearly subscription validity
+  - Added `stripe_monthly_price_id` and `stripe_yearly_price_id` for payment gateway integration.
+# 🔧 Backend API & Controllers
+- **Authentication & Profile**
+  - **AuthController**:
+    - Added `updateProfile` method to handle user name and phone number updates via `/auth/profile-update` endpoint
+- **User Controllers (User Namespace)**
+  - **User\PlanController**:
+    - Created public API endpoint (`/user/plans`) to fetch plans dynamically for users
+  - **User\SubscriptionController**:
+    - Created to handle subscription management logic
+    - Implements expiry date calculations based on database validity columns (`duration_days` for monthly, `yearly_duration_days` for yearly)
+    - Handles plan selection and subscription assignment
+  - **User\BillingController**:
+    - Created to calculate and display subscription health metrics:
+      - `days_consumed`
+      - `days_remaining`
+      - `progress_percent`
+    - Handles "No Active Plan" states
+- **Admin Controllers**
+  - **Admin\PlanController**:
+    - Updated to process and validate new pricing fields:
+      - `Tagline`
+      - `Yearly Price`
+      - `Yearly Validity Days`
+      - `Features` (converts textarea new-lines to JSON arrays)
+      - `Stripe Price IDs` (Monthly/Yearly)
+- **Security Features**
+  - **Change Password**:
+    - Implemented full backend logic (`changePassword` method)
+    - Validates minimum 8 characters and matching confirmation
+- **Changed**:
+  - **Subscription Logic**:
+    - Removed hardcoded yearly price calculation (previously monthly price × 10)
+    - Now uses `yearly_price` directly from the database
+    - Expiry calculations now use explicit database validity columns instead of hardcoded values
+    - Subscription logic properly checks against `plan_id` to ensure correct plan activation
+## 🔒 Security & Middleware
+- **CheckSubscription Middleware**:  NEW
+  - Created to verify active subscription status (checks `end_date` vs `now()`).
+  - Uses `hasActiveSubscription()` method from the User model
+  - Returns 403 Forbidden for expired or missing subscriptions
+  - Registered as `subscribed` alias in `bootstrap/app.php`
+  - **Status**: Available but not applied to any routes yet (inactive until manually assigned)
+  - **User Model**:
+    - Added `hasActiveSubscription()` helper method to check subscription validity by comparing `end_date` with the current date
+  - **Plan Model**:
+    - Updated with new fillable fields and array casting for `features` column
+## 🎨 Frontend - User Dashboard
+- **Profile & Account Settings**
+  - **AccountSettingsAccount.vue**:
+    - Refactored to fetch real user data from `/user` endpoint
+    - Connected to `/auth/profile-update` for saving changes
+    - Removed demo fields (Language, Organization)
+- **Security Tab**
+  - **Change Password**:
+    - Full frontend implementation with form validation
+    - Min 8 characters requirement
+    - Matching password confirmation
+  - **Two-Factor Authentication**:
+    - UI cleaned to show "Admin Managed" status (via Global Email OTP)
+    - Removed misleading "Enable Authenticator App" buttons
+    - Removed static "API Keys" section
+- **Billing Tab**
+  - **Current Plan Card**:
+    - Refactored to display live subscription data:
+      - Plan Name
+      - Price
+      - Expiry Date
+      - Days Remaining
+      - Progress Bar
+    - Handles "No Active Plan" states dynamically
+    - Standardized to GBP (£) currency
+## Changed
+- **Navigation**:
+  - Updated "Profile" link in avatar dropdown to use real User ID
+  - Removed redundant "Profile" menu item
+## 💳 Frontend - Pricing & Subscription UI
+- **AppPricing.vue**:
+  - Dynamic data fetching from `/user/plans` API (replaced hardcoded arrays)
+  - Smart billing toggle between Monthly and Yearly pricing using real DB values
+  - Real-time plan feature rendering from database
+  - Dynamic tagline display
+  - "Select Plan" buttons now trigger real subscriptions via API.
+  - "Current Plan" badge logic updated to check `user.subscription_id`.
+## Changed
+- **Pricing Display Logic**:
+  - **Yearly Mode**: Shows actual yearly price from the database
+  - **Monthly Mode**: Shows monthly price from the database
+  - Removed redundant pricing sub-text (e.g., "USD 499/Year")
+  - Shows "Billed Monthly" or "Billed Yearly" based on toggle selection
+- **Plan Selection Flow**:
+  - "Select Plan" button now triggers real subscription via API
+  - Dynamic button states:
+    - "Your Current Plan" (disabled/green) for active subscriptions
+    - "Select Plan" or "Subscribe" for available plans
+  - Badge logic updated to check `user.subscription_id`
+  - Only shows "Your Current Plan" badge when subscription matches selected plan
+## 🛠 Admin Panel - Pricing Management
+- **Pricing Management UI**:
+  - Input field for `Tagline`
+  - Input field for `Yearly Price`
+  - Input field for `Yearly Validity (Days)`
+  - Textarea for `Features` (auto-converts new-lines to JSON)
+  - Input fields for `Stripe Monthly Price ID`
+  - Input field for `Stripe Yearly Price ID`
+  - Added "Yearly Validity (Days)" input to control subscription duration explicitly.
+  - Added "Features" Textarea that automatically converts new-line lists into JSON arrays.
+  - Added fields for Stripe Price IDs (Monthly/Yearly).
+  - **Logic**: Updated `Admin\PlanController` to process and validate all new fields.
+## Changed
+- **Data Processing**:
+  - Admin can now edit all pricing fields dynamically
+  - Features automatically formatted as JSON arrays
+  - All fields validated and processed by `Admin\PlanController`
+## 🐛 Bug Fixes
+- **Pricing Display**:
+  - Fixed incorrect yearly price calculation when toggling between monthly/yearly
+  - Removed redundant text (e.g., extra "GBP 499/Year" below main price)
+  - Ensured yearly price comes directly from database
+- **Subscription Logic**:
+  - Fixed badge logic to correctly match plan ID with active subscription
+  - Corrected subscription expiry calculations using proper database columns
+- **UI/UX**:
+  - Cleaned up pricing display for better clarity and user experience
+  - Removed conflicting or duplicate pricing information
+## 📝 System Status & Notes
+- **Subscription Awareness**:
+  - System is fully aware of subscription validity
+  - All logic implemented but remains permissive (no routes blocked)
+  - Middleware registered but not active on any routes
+## Future Readiness
+- **Payment Integration**:
+  - Database prepared for Stripe integration with price ID fields
+  - Ready for future payment gateway connections
+- **Third-Party Integration**:
+  - Architecture supports future integration with:
+    - Firebase
+    - Scorer App
+    - Other subscription management systems
+## Important Notes
+- **No Structural Changes**: Subscriptions table structure remains unchanged (only logic updated)
+- **Middleware Activation**: `CheckSubscription` middleware will be applied manually to routes when needed
+- **Currency Standard**: GBP (£) standardized across all user and admin interfaces
+**Files Modified:**
+- app/Http/Controllers/Admin/PlanController.php
+- app/Http/Controllers/AuthController.php
+- app/Models/Plan.php
+- app/Models/User.php
+- bootstrap/app.php
+- components.d.ts
+- config/auth.php
+- resources/js/components/AppPricing.vue
+- resources/js/layouts/components/UserProfile.vue
+- resources/js/pages/admin/pricing-mgmt.vue
+- resources/js/views/pages/account-settings/AccountSettingsAccount.vue
+- resources/js/views/pages/account-settings/AccountSettingsBillingAndPlans.vue      
+- resources/js/views/pages/account-settings/AccountSettingsSecurity.vue
+- routes/api.php
+**Files Added:**
+- app/Http/Controllers/User/ BillingController.php, planController.php, SubscriptionController.php
+- app/Http/Middleware/CheckSubscription.php
+- database/migrations/2025_12_29_215327_add_features_and_tagline_to_plans_table.php
+- database/migrations/2025_12_30_103925_add_yearly_and_stripe_ids_to_plans_table.php
+- database/migrations/2025_12_30_121107_add_yearly_validity_to_plans_table.php
+**Commit Message:** Profile and account settins changes, Plan management and Subscription Management System implementation and enhancements for future integration with other systems.
+
 ## [29-12-2025] -  2FA Email OTP Security System, Email Server config in admin & Mobile field in signup page Integration and fixes
 **Key Features:** Email one-time password (OTP) System, SMTP Configuration, Mobile Number Support, and Router Security Hardening.
 # Backend Changes
@@ -37,7 +210,7 @@
     - Added "Email Server" to the System Configuration menu.
 Here’s a cleaned-up version with all repeated lines removed:
 **Commit**
-[pending]- 2FA Email OTP Security System, Email Server config in admin & Mobile field in signup page Integration and fixes
+[50e4c1f]- 2FA Email OTP Security System, Email Server config in admin & Mobile field in signup page Integration and fixes
 
 
 [28-12-2025] - Admin Member Management, Pricing Architecture, and Security Pulse Logic

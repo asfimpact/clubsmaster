@@ -8,12 +8,19 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+// User Billing & Plans
+Route::middleware('auth:sanctum')->get('/user/billing', [\App\Http\Controllers\User\BillingController::class, 'index']);
+Route::middleware('auth:sanctum')->get('/user/plans', [\App\Http\Controllers\User\PlanController::class, 'index']);
+Route::middleware('auth:sanctum')->post('/user/subscribe', [\App\Http\Controllers\User\SubscriptionController::class, 'subscribe']);
+
 // Auth Group
 Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register']);
     Route::post('login', [AuthController::class, 'login']);
 
     Route::middleware('auth:sanctum')->group(function () {
+        Route::post('profile-update', [AuthController::class, 'updateProfile']);
+        Route::post('change-password', [AuthController::class, 'changePassword']);
         Route::post('2fa-send', [\App\Http\Controllers\Auth\TwoFactorController::class, 'send']);
         Route::post('2fa-verify', [\App\Http\Controllers\Auth\TwoFactorController::class, 'verify']);
     });

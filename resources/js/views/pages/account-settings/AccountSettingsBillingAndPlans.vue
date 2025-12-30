@@ -61,6 +61,34 @@ const resetPaymentForm = () => {
   cardCvv.value = 420
   selectedPaymentMethod.value = 'credit-debit-atm-card'
 }
+
+// --- API INTEGRATION ---
+const planDetails = ref({
+    plan_name: 'Loading...',
+    plan_price: 0,
+    status: 'inactive',
+    active_until: 'N/A',
+    days_consumed: 0,
+    total_days: 0,
+    days_remaining: 0,
+    progress_percent: 0,
+    currency: '$', 
+})
+
+const fetchBilling = async () => {
+    try {
+        const { data } = await useApi('/user/billing')
+        if (data.value) {
+            planDetails.value = data.value
+        }
+    } catch (e) {
+        console.error("Failed to fetch billing", e)
+    }
+}
+
+onMounted(() => {
+    fetchBilling()
+})
 </script>
 
 <template>
@@ -77,16 +105,16 @@ const resetPaymentForm = () => {
               <div>
                 <div class="mb-6">
                   <h3 class="text-body-1 text-high-emphasis font-weight-medium mb-1">
-                    Your Current Plan is Basic
+                    Your Current Plan is {{ planDetails.plan_name }}
                   </h3>
                   <p class="text-body-1">
-                    A simple start for everyone
+                    {{ planDetails.status === 'active' ? 'Enjoy your premium features' : 'Not Active' }}
                   </p>
                 </div>
 
                 <div class="mb-6">
                   <h3 class="text-body-1 text-high-emphasis font-weight-medium mb-1">
-                    Active until Dec 09, 2021
+                    Active until {{ planDetails.active_until }}
                   </h3>
                   <p class="text-body-1">
                     We will send you a notification upon Subscription expiration
@@ -95,13 +123,14 @@ const resetPaymentForm = () => {
 
                 <div>
                   <h3 class="text-body-1 text-high-emphasis font-weight-medium mb-1">
-                    <span class="me-2">$199 Per Month</span>
+                    <span class="me-2">{{ planDetails.currency }}{{ planDetails.plan_price }} Per Month</span>
                     <VChip
+                      v-if="planDetails.status === 'active'"
                       color="primary"
                       size="small"
                       label
                     >
-                      Popular
+                      Active
                     </VChip>
                   </h3>
                   <p class="text-base mb-0">
@@ -119,6 +148,7 @@ const resetPaymentForm = () => {
                 icon="tabler-alert-triangle"
                 type="warning"
                 variant="tonal"
+                v-if="planDetails.days_remaining < 7"
               >
                 <VAlertTitle class="mb-1">
                   We need your attention!
@@ -126,22 +156,33 @@ const resetPaymentForm = () => {
 
                 <span>Your plan requires update</span>
               </VAlert>
+              <VAlert
+                v-else
+                icon="tabler-check"
+                type="success"
+                variant="tonal"
+              >
+                 <VAlertTitle class="mb-1">
+                  Plan is Healthy
+                </VAlertTitle>
+                <span>You are covered for {{ planDetails.days_remaining }} days.</span>
+              </VAlert>
 
               <!-- progress -->
               <h6 class="d-flex font-weight-medium text-body-1 text-high-emphasis mt-6 mb-1">
                 <span>Days</span>
                 <VSpacer />
-                <span>12 of 30 Days</span>
+                <span>{{ planDetails.days_consumed }} of {{ planDetails.total_days }} Days</span>
               </h6>
 
               <VProgressLinear
                 color="primary"
                 rounded
-                model-value="15"
+                :model-value="planDetails.progress_percent"
               />
 
               <p class="text-body-2 mt-1 mb-0">
-                18 days remaining until your plan requires update
+                {{ planDetails.days_remaining }} days remaining until your plan requires update
               </p>
             </VCol>
 

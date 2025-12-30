@@ -1,31 +1,51 @@
 <script setup>
 import avatar1 from '@images/avatars/avatar-1.png'
 
-const accountData = {
-  avatarImg: avatar1,
-  firstName: 'john',
-  lastName: 'Doe',
-  email: 'johnDoe@example.com',
-  org: 'Pixinvent',
-  phone: '+1 (917) 543-9876',
-  address: '123 Main St, New York, NY 10001',
-  state: 'New York',
-  zip: '10001',
-  country: 'USA',
-  language: 'English',
-  timezone: '(GMT-11:00) International Date Line West',
-  currency: 'USD',
-}
+// 1. Get user data from cookie
+const userData = useCookie('userData')
 
-const refInputEl = ref()
+// 2. Initialize local state from cookie (safe clone)
+// We split FullName back to First/Last for editing if needed, 
+// BUT simpler is to rely on what backend gives or just ask user to edit First/Last separately if we have them.
+// The userData cookie usually has 'fullName'. 
+// Let's assume we want to edit First/Last names. 
+// If the cookie only has 'fullName', we might need to fetch the detailed 'user' object from /api/user to get first/last.
+// However, looking at AuthController logic, we return `userData` with `fullName`.
+// We should probably fetch the FRESH user details on mount to be safe and get first_name/last_name.
+// OR, we can just split fullName for now if we are lazy, but that's risky.
+
+// Better approach: Fetch /api/user on mount to fill the form.
+const accountDataLocal = ref({
+  first_name: '',
+  last_name: '',
+  email: '',
+  phone: '',
+  avatarImg: avatar1, 
+})
+
 const isConfirmDialogOpen = ref(false)
-const accountDataLocal = ref(structuredClone(accountData))
 const isAccountDeactivated = ref(false)
 const validateAccountDeactivation = [v => !!v || 'Please confirm account deactivation']
 
-const resetForm = () => {
-  accountDataLocal.value = structuredClone(accountData)
+// Fetch fresh data
+const fetchUser = async () => {
+  try {
+    const { data } = await useApi('/user') // This route exists in api.php and returns $request->user()
+    if (data.value) {
+        accountDataLocal.value.first_name = data.value.first_name
+        accountDataLocal.value.last_name = data.value.last_name
+        accountDataLocal.value.email = data.value.email
+        accountDataLocal.value.phone = data.value.phone || data.value.mobile // handle both keys if any
+        // accountDataLocal.value.avatarImg = data.value.avatar // if we had one
+    }
+  } catch (e) {
+    console.error("Failed to fetch user", e)
+  }
 }
+
+onMounted(() => {
+    fetchUser()
+})
 
 const changeAvatar = file => {
   const fileReader = new FileReader()
@@ -39,73 +59,42 @@ const changeAvatar = file => {
   }
 }
 
-// reset avatar image
 const resetAvatar = () => {
-  accountDataLocal.value.avatarImg = accountData.avatarImg
+  accountDataLocal.value.avatarImg = avatar1
 }
 
-const timezones = [
-  '(GMT-11:00) International Date Line West',
-  '(GMT-11:00) Midway Island',
-  '(GMT-10:00) Hawaii',
-  '(GMT-09:00) Alaska',
-  '(GMT-08:00) Pacific Time (US & Canada)',
-  '(GMT-08:00) Tijuana',
-  '(GMT-07:00) Arizona',
-  '(GMT-07:00) Chihuahua',
-  '(GMT-07:00) La Paz',
-  '(GMT-07:00) Mazatlan',
-  '(GMT-07:00) Mountain Time (US & Canada)',
-  '(GMT-06:00) Central America',
-  '(GMT-06:00) Central Time (US & Canada)',
-  '(GMT-06:00) Guadalajara',
-  '(GMT-06:00) Mexico City',
-  '(GMT-06:00) Monterrey',
-  '(GMT-06:00) Saskatchewan',
-  '(GMT-05:00) Bogota',
-  '(GMT-05:00) Eastern Time (US & Canada)',
-  '(GMT-05:00) Indiana (East)',
-  '(GMT-05:00) Lima',
-  '(GMT-05:00) Quito',
-  '(GMT-04:00) Atlantic Time (Canada)',
-  '(GMT-04:00) Caracas',
-  '(GMT-04:00) La Paz',
-  '(GMT-04:00) Santiago',
-  '(GMT-03:30) Newfoundland',
-  '(GMT-03:00) Brasilia',
-  '(GMT-03:00) Buenos Aires',
-  '(GMT-03:00) Georgetown',
-  '(GMT-03:00) Greenland',
-  '(GMT-02:00) Mid-Atlantic',
-  '(GMT-01:00) Azores',
-  '(GMT-01:00) Cape Verde Is.',
-  '(GMT+00:00) Casablanca',
-  '(GMT+00:00) Dublin',
-  '(GMT+00:00) Edinburgh',
-  '(GMT+00:00) Lisbon',
-  '(GMT+00:00) London',
-]
+const saveChanges = async () => {
+    try {
+        const res = await $api('/auth/profile-update', {
+            method: 'POST',
+            body: {
+                first_name: accountDataLocal.value.first_name,
+                last_name: accountDataLocal.value.last_name,
+                phone: accountDataLocal.value.phone,
+            }
+        })
+        
+        // Update cookie with new display data
+        if (res.userData) {
+            userData.value = res.userData
+        }
+        
+        alert('Profile updated successfully') // Simple alert for now, can be snackbar
+    } catch (e) {
+        console.error(e)
+        alert('Failed to update profile')
+    }
+}
 
-const currencies = [
-  'USD',
-  'EUR',
-  'GBP',
-  'AUD',
-  'BRL',
-  'CAD',
-  'CNY',
-  'CZK',
-  'DKK',
-  'HKD',
-  'HUF',
-  'INR',
-]
+const resetForm = () => {
+  fetchUser() // Just re-fetch
+}
 </script>
 
 <template>
   <VRow>
     <VCol cols="12">
-      <VCard>
+      <VCard title="Profile Details">
         <VCardText class="d-flex">
           <!-- 👉 Avatar -->
           <VAvatar
@@ -162,7 +151,7 @@ const currencies = [
 
         <VCardText class="pt-2">
           <!-- 👉 Form -->
-          <VForm class="mt-3">
+          <VForm class="mt-3" @submit.prevent="saveChanges">
             <VRow>
               <!-- 👉 First Name -->
               <VCol
@@ -170,7 +159,7 @@ const currencies = [
                 cols="12"
               >
                 <AppTextField
-                  v-model="accountDataLocal.firstName"
+                  v-model="accountDataLocal.first_name"
                   placeholder="John"
                   label="First Name"
                 />
@@ -182,7 +171,7 @@ const currencies = [
                 cols="12"
               >
                 <AppTextField
-                  v-model="accountDataLocal.lastName"
+                  v-model="accountDataLocal.last_name"
                   placeholder="Doe"
                   label="Last Name"
                 />
@@ -198,18 +187,8 @@ const currencies = [
                   label="E-mail"
                   placeholder="johndoe@gmail.com"
                   type="email"
-                />
-              </VCol>
-
-              <!-- 👉 Organization -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppTextField
-                  v-model="accountDataLocal.org"
-                  label="Organization"
-                  placeholder="Pixinvent"
+                  disabled 
+                  hint="Contact admin to change email"
                 />
               </VCol>
 
@@ -225,110 +204,19 @@ const currencies = [
                 />
               </VCol>
 
-              <!-- 👉 Address -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppTextField
-                  v-model="accountDataLocal.address"
-                  label="Address"
-                  placeholder="123 Main St, New York, NY 10001"
-                />
-              </VCol>
-
-              <!-- 👉 State -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppTextField
-                  v-model="accountDataLocal.state"
-                  label="State"
-                  placeholder="New York"
-                />
-              </VCol>
-
-              <!-- 👉 Zip Code -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppTextField
-                  v-model="accountDataLocal.zip"
-                  label="Zip Code"
-                  placeholder="10001"
-                />
-              </VCol>
-
-              <!-- 👉 Country -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppSelect
-                  v-model="accountDataLocal.country"
-                  label="Country"
-                  :items="['USA', 'Canada', 'UK', 'India', 'Australia']"
-                  placeholder="Select Country"
-                />
-              </VCol>
-
-              <!-- 👉 Language -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppSelect
-                  v-model="accountDataLocal.language"
-                  label="Language"
-                  placeholder="Select Language"
-                  :items="['English', 'Spanish', 'Arabic', 'Hindi', 'Urdu']"
-                />
-              </VCol>
-
-              <!-- 👉 Timezone -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppSelect
-                  v-model="accountDataLocal.timezone"
-                  label="Timezone"
-                  placeholder="Select Timezone"
-                  :items="timezones"
-                  :menu-props="{ maxHeight: 200 }"
-                />
-              </VCol>
-
-              <!-- 👉 Currency -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppSelect
-                  v-model="accountDataLocal.currency"
-                  label="Currency"
-                  placeholder="Select Currency"
-                  :items="currencies"
-                  :menu-props="{ maxHeight: 200 }"
-                />
-              </VCol>
-
               <!-- 👉 Form Actions -->
               <VCol
                 cols="12"
                 class="d-flex flex-wrap gap-4"
               >
-                <VBtn>Save changes</VBtn>
+                <VBtn type="submit">Save changes</VBtn>
 
                 <VBtn
                   color="secondary"
                   variant="tonal"
-                  type="reset"
                   @click.prevent="resetForm"
                 >
-                  Cancel
+                  Reset
                 </VBtn>
               </VCol>
             </VRow>

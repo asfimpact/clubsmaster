@@ -47,56 +47,79 @@ const props = defineProps({
 
 const annualMonthlyPlanPriceToggler = ref(true)
 
-const pricingPlans = [
-  {
-    name: 'Basic',
-    tagLine: 'A simple start for everyone',
-    logo: dollarCoinPiggyBank,
-    monthlyPrice: 0,
-    yearlyPrice: 0,
-    isPopular: false,
-    current: true,
-    features: [
-      '100 responses a month',
-      'Unlimited forms and surveys',
-      'Unlimited fields',
-      'Basic form creation tools',
-      'Up to 2 subdomains',
-    ],
-  },
-  {
-    name: 'Standard',
-    tagLine: 'For small to medium businesses',
-    logo: safeBoxWithGoldenCoin,
-    monthlyPrice: 49,
-    yearlyPrice: 499,
-    isPopular: true,
-    current: false,
-    features: [
-      'Unlimited responses',
-      'Unlimited forms and surveys',
-      'Instagram profile page',
-      'Google Docs integration',
-      'Custom “Thank you” page',
-    ],
-  },
-  {
-    name: 'Enterprise',
-    tagLine: 'Solution for big organizations',
-    logo: spaceRocket,
-    monthlyPrice: 99,
-    yearlyPrice: 999,
-    isPopular: false,
-    current: false,
-    features: [
-      'PayPal payments',
-      'Logic Jumps',
-      'File upload with 5GB storage',
-      'Custom domain support',
-      'Stripe integration',
-    ],
-  },
-]
+const pricingPlans = ref([])
+const userData = useCookie('userData')
+const activeSubscriptionId = ref(null)
+
+const subscribeToPlan = async (planId) => {
+    try {
+        const frequency = annualMonthlyPlanPriceToggler.value ? 'yearly' : 'monthly'
+        const { data } = await useApi('/user/subscribe', {
+            method: 'POST',
+            body: {
+                plan_id: planId,
+                frequency: frequency
+            }
+        })
+        
+        if (data.value && data.value.user) {
+            // Update local state
+            userData.value = data.value.user
+            activeSubscriptionId.value = data.value.user.subscription?.plan_id
+            
+            // Refresh plans to update UI badges
+            // Actually just updating the ref is enough if we make computed
+            // But for now, simple reload or alert?
+            alert(data.value.message)
+            // Re-fetch plans to update badges
+            fetchPlans()
+        }
+    } catch (e) {
+        console.error("Subscription failed", e)
+        alert("Failed to subscribe")
+    }
+}
+
+const fetchPlans = async () => {
+    try {
+        // Fetch User first to get subscription
+        const { data: userRes } = await useApi('/user')
+        if (userRes.value) {
+           activeSubscriptionId.value = userRes.value.subscription?.plan_id // Assuming backend sends subscription or we load it
+           // If backend /user doesn't send sub, we might need /user/billing logic
+           // For now assuming we can get it. If not, we might need to update AuthController to include it.
+           // Actually, earlier update to SubscriptionController returns loaded subscription.
+        }
+
+        const { data } = await useApi('/user/plans')
+        if (data.value) {
+             pricingPlans.value = data.value.map((plan, index) => {
+                let logo = dollarCoinPiggyBank
+                if (index % 3 === 1) logo = safeBoxWithGoldenCoin
+                if (index % 3 === 2) logo = spaceRocket
+
+                return {
+                    id: plan.id, // Ensure ID is passed
+                    name: plan.name,
+                    tagLine: plan.tagline || 'A simple start for everyone',
+                    logo: logo,
+                    monthlyPrice: plan.price,
+                    yearlyPrice: plan.yearly_price ? parseFloat(plan.yearly_price) : (parseFloat(plan.price) * 12),
+                    isPopular: false,
+                    // Check against active sub
+                    current: activeSubscriptionId.value === plan.id, 
+                    features: Array.isArray(plan.features) ? plan.features : []
+                }
+             })
+        }
+    } catch (e) {
+        console.error("Failed to load plans", e)
+    }
+}
+
+onMounted(() => {
+    fetchPlans()
+})
 </script>
 
 <template>
@@ -203,23 +226,23 @@ const pricingPlans = [
           <div class="position-relative">
             <div class="d-flex justify-center pt-5 pb-10">
               <div class="text-body-1 align-self-start font-weight-medium">
-                $
+                £
               </div>
               <h1 class="text-h1 font-weight-medium text-primary">
-                {{ annualMonthlyPlanPriceToggler ? Math.floor(Number(plan.yearlyPrice) / 12) : plan.monthlyPrice }}
+                {{ annualMonthlyPlanPriceToggler ? plan.yearlyPrice : plan.monthlyPrice }}
               </h1>
               <div class="text-body-1 font-weight-medium align-self-end">
-                /month
+                {{ annualMonthlyPlanPriceToggler ? '/year' : '/month' }}
               </div>
             </div>
 
             <!-- 👉 Annual Price -->
-            <span
+            <!-- <span
               v-show="annualMonthlyPlanPriceToggler"
               class="annual-price-text position-absolute text-caption text-disabled pb-4"
             >
-              {{ plan.yearlyPrice === 0 ? 'free' : `USD ${plan.yearlyPrice}/Year` }}
-            </span>
+              {{ plan.yearlyPrice === 0 ? 'free' : `GBP ${plan.yearlyPrice}/Year` }}
+            </span> -->
           </div>
 
           <!-- 👉 Plan features -->
@@ -248,10 +271,11 @@ const pricingPlans = [
             block
             :color="plan.current ? 'success' : 'primary'"
             :variant="plan.isPopular ? 'elevated' : 'tonal'"
-            :to="{ name: 'front-pages-payment' }"
             :active="false"
+            :disabled="plan.current"
+            @click="!plan.current && subscribeToPlan(plan.id)"
           >
-            {{ plan.yearlyPrice === 0 ? 'Your Current Plan' : 'Upgrade' }}
+            {{ plan.current ? 'Your Current Plan' : 'Select Plan' }}
           </VBtn>
         </VCardText>
       </VCard>

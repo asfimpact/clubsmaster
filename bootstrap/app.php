@@ -13,6 +13,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(\App\Http\Middleware\UpdateLastActivity::class);
+        $middleware->alias([
+            'subscribed' => \App\Http\Middleware\CheckSubscription::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

@@ -47,9 +47,24 @@ const fetchPlans = async () => {
 
 const openPlanDialog = (plan = null) => {
   if (plan) {
-    planForm.value = { ...plan }
+    planForm.value = { 
+        ...plan,
+        // Convert array to multiline string for editing
+        features: Array.isArray(plan.features) ? plan.features.join('\n') : ''
+    }
   } else {
-    planForm.value = { id: null, name: '', price: 0, duration_days: 30 }
+    planForm.value = { 
+        id: null, 
+        name: '', 
+        tagline: '', 
+        price: 0, 
+        yearly_price: 0, 
+        stripe_monthly_price_id: '', 
+        stripe_yearly_price_id: '', 
+        duration_days: 30, 
+        yearly_duration_days: 365,
+        features: '' 
+    }
   }
   isPlanDialogVisible.value = true
 }
@@ -78,8 +93,10 @@ const deletePlan = async (confirmed) => {
     await $api(`/admin/plans/${selectedPlan.value.id}`, { method: 'DELETE' })
     fetchPlans()
   } catch (error) {
-    // Handle error (e.g., plan has subscriptions)
     console.error('Error deleting plan:', error)
+    // Extract error message from response
+    const msg = error.response?._data?.message || 'Failed to delete plan'
+    alert(msg) 
   }
 }
 
@@ -112,7 +129,7 @@ onMounted(fetchPlans)
         >
           <!-- Price -->
           <template #item.price="{ item }">
-            <span class="text-h6 font-weight-bold">${{ item.price }}</span>
+            <span class="text-h6 font-weight-bold">£{{ item.price }}</span>
           </template>
 
           <!-- Created At -->
@@ -148,12 +165,27 @@ onMounted(fetchPlans)
                 placeholder="e.g. Pro Package"
               />
             </VCol>
+            <VCol cols="12">
+              <AppTextField
+                v-model="planForm.tagline"
+                label="Plan Tagline"
+                placeholder="e.g. A simple start for everyone"
+              />
+            </VCol>
             <VCol cols="12" md="6">
               <AppTextField
                 v-model="planForm.price"
-                label="Price ($)"
+                label="Monthly Price (£)"
                 type="number"
-                prefix="$"
+                prefix="£"
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="planForm.yearly_price"
+                label="Yearly Price (£)"
+                type="number"
+                prefix="£"
               />
             </VCol>
             <VCol cols="12" md="6">
@@ -161,6 +193,36 @@ onMounted(fetchPlans)
                 v-model="planForm.duration_days"
                 label="Duration (Days)"
                 type="number"
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="planForm.yearly_duration_days"
+                label="Yearly Validity (Days)"
+                type="number"
+              />
+            </VCol>
+
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="planForm.stripe_monthly_price_id"
+                label="Stripe Monthly Price ID"
+                placeholder="price_123..."
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="planForm.stripe_yearly_price_id"
+                label="Stripe Yearly Price ID"
+                placeholder="price_456..."
+              />
+            </VCol>
+            <VCol cols="12">
+              <AppTextarea
+                v-model="planForm.features"
+                label="Plan Features (One per line)"
+                placeholder="Unlimited Projects&#10;Primary Support&#10;5GB Storage"
+                rows="4"
               />
             </VCol>
           </VRow>

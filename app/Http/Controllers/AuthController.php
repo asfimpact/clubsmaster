@@ -143,4 +143,67 @@ class AuthController extends Controller
             ? [['action' => 'manage', 'subject' => 'all']]
             : [['action' => 'read', 'subject' => 'AclDemo']];
     }
+
+    /**
+     * Update user profile.
+     */
+    public function updateProfile(Request $request)
+    {
+        $user = Auth::user();
+
+        $validator = Validator::make($request->all(), [
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'phone' => 'required|string|max:20',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $user->update([
+            'first_name' => $request->first_name,
+            'last_name' => $request->last_name,
+            'phone' => $request->phone,
+        ]);
+
+        return response()->json([
+            'message' => 'Profile updated successfully.',
+            'userData' => [
+                'id' => $user->id,
+                'fullName' => $user->first_name . ' ' . $user->last_name,
+                'mobile' => $user->phone,
+                'email' => $user->email,
+                'role' => $user->role,
+                'status' => $user->computed_status,
+            ],
+        ]);
+    }
+
+    /**
+     * Change password.
+     */
+    public function changePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => 'required',
+            'new_password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $user = Auth::user();
+
+        if (!Hash::check($request->current_password, $user->password)) {
+            return response()->json([
+                'message' => 'The provided current password does not match your current password.'
+            ], 422);
+        }
+
+        $user->update([
+            'password' => Hash::make($request->new_password)
+        ]);
+
+        return response()->json([
+            'message' => 'Password changed successfully.'
+        ]);
+    }
 }

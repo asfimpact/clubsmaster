@@ -23,11 +23,28 @@ class PlanController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255|unique:plans,name',
+            'tagline' => 'nullable|string|max:255',
             'price' => 'required|numeric|min:0',
+            'yearly_price' => 'nullable|numeric|min:0',
+            'stripe_monthly_price_id' => 'nullable|string|max:255',
+            'stripe_yearly_price_id' => 'nullable|string|max:255',
             'duration_days' => 'required|integer|min:1',
+            'yearly_duration_days' => 'nullable|integer|min:1',
+            'features' => 'nullable|string', // Expecting new-line separated string
         ]);
 
-        $plan = Plan::create($request->all());
+        $data = $request->all();
+
+        // Process Features
+        if ($request->has('features') && !empty($request->features)) {
+            // Split by newline, trim, and remove empty entries
+            $featuresArray = array_filter(array_map('trim', explode("\n", $request->features)));
+            $data['features'] = array_values($featuresArray); // Re-index array
+        } else {
+            $data['features'] = [];
+        }
+
+        $plan = Plan::create($data);
 
         return response()->json([
             'message' => 'Plan created successfully',
@@ -44,11 +61,28 @@ class PlanController extends Controller
 
         $request->validate([
             'name' => 'required|string|max:255|unique:plans,name,' . $id,
+            'tagline' => 'nullable|string|max:255',
             'price' => 'required|numeric|min:0',
+            'yearly_price' => 'nullable|numeric|min:0',
+            'stripe_monthly_price_id' => 'nullable|string|max:255',
+            'stripe_yearly_price_id' => 'nullable|string|max:255',
             'duration_days' => 'required|integer|min:1',
+            'yearly_duration_days' => 'nullable|integer|min:1',
+            'features' => 'nullable|string',
         ]);
 
-        $plan->update($request->all());
+        $data = $request->all();
+
+        if ($request->has('features')) { // Only process if sent
+            if (!empty($request->features)) {
+                $featuresArray = array_filter(array_map('trim', explode("\n", $request->features)));
+                $data['features'] = array_values($featuresArray);
+            } else {
+                $data['features'] = [];
+            }
+        }
+
+        $plan->update($data);
 
         return response()->json([
             'message' => 'Plan updated successfully',
