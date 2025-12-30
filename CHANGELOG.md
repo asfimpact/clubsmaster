@@ -1,3 +1,59 @@
+#### [2025-12-30] - Stripe Checkout , Free Plan Integration & logic
+- **Stripe Checkout Integration**
+  - Added `StripeController` to handle secure checkout session creation.
+  - Implemented `/stripe/checkout` API endpoint.
+  - Configured success (`/?payment=success`) and cancel (`/pricing?payment=cancelled`) redirect flows.
+- **Free Plan Activation**
+  - Added dynamic duration calculation for free trials (Monthly vs Yearly).
+  - Implemented confirmation modal on the pricing page.
+  - Enabled direct database subscription creation for free plans (bypassing Stripe).
+- **User Dashboard Enhancements**
+  - Added `current_plan` accessor to the `User` model for frontend usage.
+  - Implemented **“Your Current Plan”** badge logic on pricing cards.
+  - Added Snackbar notifications for payment success and cancellation.
+### 🔧 Backend
+- **Models**
+  - `app/Models/User.php`
+    - Added `Billable` trait.
+    - Implemented `getCurrentPlanAttribute`.
+  - `app/Models/Subscription.php`
+    - Extended Laravel Cashier’s `Subscription` model.
+- **Controllers**
+  - `app/Http/Controllers/User/SubscriptionController.php`
+    - Updated to use strict Cashier-compatible fields (`stripe_status = 'active'`).
+  - `app/Http/Controllers/StripeController.php`
+    - Added guard clauses to prevent free plans from calling the Stripe API.
+- **Routes**
+  - `routes/api.php`
+    - Added `/api/stripe/checkout` route protected by Sanctum.
+- **Migrations**
+  - Added Laravel Cashier tables:
+    - `database/migrations/*_create_customers_table.php`
+    - `database/migrations/*_create_subscriptions_table.php`
+    - `database/migrations/*_create_subscription_items_table.php`
+  - Renamed `expires_at` column to `ends_at`.
+### 💻 Frontend
+- **Components**
+  - `resources/js/pages/AppPricing.vue`
+    - Integrated `useApi` for dynamic data loading.
+    - Added loading states and button feedback.
+    - Implemented success and error handling for subscription flows.
+    - Added `VSnackbar` toast notifications.
+- **Utilities**
+  - `resources/js/composables/useApi.js`
+    - Fixed JSON payload handling and `Content-Type` headers.
+### 📁 Files Modified / Added
+- `app/Http/Controllers/StripeController.php`
+- `app/Http/Controllers/User/SubscriptionController.php`
+- `app/Models/User.php`
+- `app/Models/Subscription.php`
+- `routes/api.php`
+- `database/migrations/*`files
+- `resources/js/pages/AppPricing.vue`
+- `resources/js/composables/useApi.js`
+**Commit Message**
+[pending] - Stripe Checkout , Free Plan Integration & logic
+
 #### [29-12-2025] - Profile and account settins changes, Plan management and Subscription Management System implementation and enhancements for future integration with other systems.
 ## 📊 Added Database
 - **Plans Table Enhancements**:

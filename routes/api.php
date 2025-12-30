@@ -13,6 +13,9 @@ Route::middleware('auth:sanctum')->get('/user/billing', [\App\Http\Controllers\U
 Route::middleware('auth:sanctum')->get('/user/plans', [\App\Http\Controllers\User\PlanController::class, 'index']);
 Route::middleware('auth:sanctum')->post('/user/subscribe', [\App\Http\Controllers\User\SubscriptionController::class, 'subscribe']);
 
+// Stripe Checkout
+Route::middleware('auth:sanctum')->post('/stripe/checkout', [\App\Http\Controllers\StripeController::class, 'checkout']);
+
 // Auth Group
 Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register']);
@@ -42,4 +45,3 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
     Route::patch('settings', [\App\Http\Controllers\Admin\SettingController::class, 'update']);
     Route::post('settings/test-email', [\App\Http\Controllers\Admin\SettingController::class, 'testEmail']);
 });
-

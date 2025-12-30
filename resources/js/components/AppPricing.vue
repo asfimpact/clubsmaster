@@ -2,6 +2,7 @@
 import safeBoxWithGoldenCoin from '@images/misc/3d-safe-box-with-golden-dollar-coins.png'
 import spaceRocket from '@images/misc/3d-space-rocket-with-smoke.png'
 import dollarCoinPiggyBank from '@images/misc/dollar-coins-flying-pink-piggy-bank.png'
+import { useApi } from '@/composables/useApi'
 
 const props = defineProps({
   title: {
@@ -50,33 +51,130 @@ const annualMonthlyPlanPriceToggler = ref(true)
 const pricingPlans = ref([])
 const userData = useCookie('userData')
 const activeSubscriptionId = ref(null)
+const loadingPlanId = ref(null) // Track which plan is loading
+
+// Free plan confirmation modal
+const showFreePlanModal = ref(false)
+const selectedFreePlan = ref(null)
+const freePlanDuration = ref(0)
+
+// Snackbar notification
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('success')
 
 const subscribeToPlan = async (planId) => {
+    // Prevent double-clicks
+    if (loadingPlanId.value) return
+    
     try {
+        // Set loading state
+        loadingPlanId.value = planId
         const frequency = annualMonthlyPlanPriceToggler.value ? 'yearly' : 'monthly'
-        const { data } = await useApi('/user/subscribe', {
+        const selectedPlan = pricingPlans.value.find(p => p.id === planId)
+        
+        // Check if this is a free plan (price = 0)
+        const isFree = (frequency === 'yearly' && selectedPlan.yearlyPrice === 0) || 
+                       (frequency === 'monthly' && selectedPlan.monthlyPrice === 0)
+        
+        if (isFree) {
+            // Free tier: Show confirmation modal
+            selectedFreePlan.value = selectedPlan
+            
+            // Calculate duration based on frequency
+            if (frequency === 'yearly') {
+                freePlanDuration.value = selectedPlan.yearlyDurationDays || 365
+            } else {
+                freePlanDuration.value = selectedPlan.durationDays || 30
+            }
+            
+            showFreePlanModal.value = true
+            loadingPlanId.value = null
+        } else {
+            // Paid plan: Redirect to Stripe Checkout
+            console.log('Calling Stripe checkout with:', {
+                plan_id: planId,
+                frequency: frequency
+            })
+            
+            const { data, error } = await useApi('/stripe/checkout', {
+                method: 'POST',
+                body: {
+                    plan_id: planId,
+                    frequency: frequency
+                }
+            })
+            
+            console.log('Stripe checkout response:', { data: data.value, error: error.value })
+            
+            if (error.value) {
+                console.error('Stripe checkout error:', error.value)
+                alert('Failed to create checkout session. Please check console for details.')
+                loadingPlanId.value = null
+                return
+            }
+            
+            if (data.value && data.value.url) {
+                // Keep loading state - user is being redirected
+                // Redirect to Stripe Checkout
+                window.location.href = data.value.url
+            } else if (data.value && data.value.error) {
+                alert(data.value.error)
+                loadingPlanId.value = null
+            } else {
+                alert('Unexpected response from server.')
+                loadingPlanId.value = null
+            }
+        }
+    } catch (e) {
+        console.error("Subscription failed", e)
+        alert("Failed to subscribe. Please try again.")
+        loadingPlanId.value = null
+    }
+}
+
+// Confirm free plan subscription
+const confirmFreePlan = async () => {
+    if (!selectedFreePlan.value) return
+    
+    try {
+        loadingPlanId.value = selectedFreePlan.value.id
+        showFreePlanModal.value = false
+        
+        const frequency = annualMonthlyPlanPriceToggler.value ? 'yearly' : 'monthly'
+        
+        const { data, error } = await useApi('/user/subscribe', {
             method: 'POST',
             body: {
-                plan_id: planId,
+                plan_id: selectedFreePlan.value.id,
                 frequency: frequency
             }
         })
+        
+        if (error.value) {
+            alert('Failed to activate subscription. Please try again.')
+            loadingPlanId.value = null
+            return
+        }
         
         if (data.value && data.value.user) {
             // Update local state
             userData.value = data.value.user
             activeSubscriptionId.value = data.value.user.subscription?.plan_id
             
-            // Refresh plans to update UI badges
-            // Actually just updating the ref is enough if we make computed
-            // But for now, simple reload or alert?
-            alert(data.value.message)
-            // Re-fetch plans to update badges
+            // Show success snackbar
+            snackbarMessage.value = data.value.message
+            snackbarColor.value = 'success'
+            snackbar.value = true
+            
             fetchPlans()
         }
+        
+        loadingPlanId.value = null
     } catch (e) {
-        console.error("Subscription failed", e)
-        alert("Failed to subscribe")
+        console.error("Free plan activation failed", e)
+        alert("Failed to activate subscription. Please try again.")
+        loadingPlanId.value = null
     }
 }
 
@@ -105,6 +203,8 @@ const fetchPlans = async () => {
                     logo: logo,
                     monthlyPrice: plan.price,
                     yearlyPrice: plan.yearly_price ? parseFloat(plan.yearly_price) : (parseFloat(plan.price) * 12),
+                    durationDays: plan.duration_days || 30,
+                    yearlyDurationDays: plan.yearly_duration_days || 365,
                     isPopular: false,
                     // Check against active sub
                     current: activeSubscriptionId.value === plan.id, 
@@ -169,7 +269,7 @@ onMounted(() => {
           color="primary"
           size="small"
         >
-          Save up to 10%
+          Save up to 30%
         </VChip>
       </div>
     </div>
@@ -272,16 +372,71 @@ onMounted(() => {
             :color="plan.current ? 'success' : 'primary'"
             :variant="plan.isPopular ? 'elevated' : 'tonal'"
             :active="false"
-            :disabled="plan.current"
+            :disabled="plan.current || loadingPlanId === plan.id"
+            :loading="loadingPlanId === plan.id"
             @click="!plan.current && subscribeToPlan(plan.id)"
           >
-            {{ plan.current ? 'Your Current Plan' : 'Select Plan' }}
+            <template v-if="loadingPlanId === plan.id">
+              Redirecting to Checkout...
+            </template>
+            <template v-else>
+              {{ plan.current ? 'Your Current Plan' : 'Select Plan' }}
+            </template>
           </VBtn>
         </VCardText>
       </VCard>
     </VCol>
   </VRow>
   <!-- !SECTION  -->
+
+  <!-- Free Plan Confirmation Modal -->
+  <VDialog
+    v-model="showFreePlanModal"
+    max-width="500"
+  >
+    <VCard>
+      <VCardTitle class="text-h5">
+        Activate {{ selectedFreePlan?.name }}?
+      </VCardTitle>
+
+      <VCardText>
+        <p class="mb-4">
+          You will have access to the <strong>{{ selectedFreePlan?.name }}</strong> plan for <strong>{{ freePlanDuration }} days</strong>.
+        </p>
+        <p class="text-body-2 text-medium-emphasis">
+          This is a free plan with no payment required. Click confirm to activate your subscription.
+        </p>
+      </VCardText>
+
+      <VCardActions>
+        <VSpacer />
+        <VBtn
+          color="secondary"
+          variant="outlined"
+          @click="showFreePlanModal = false"
+        >
+          Cancel
+        </VBtn>
+        <VBtn
+          color="primary"
+          variant="elevated"
+          @click="confirmFreePlan"
+        >
+          Confirm & Activate
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <!-- Success Snackbar -->
+  <VSnackbar
+    v-model="snackbar"
+    :color="snackbarColor"
+    location="top end"
+    :timeout="5000"
+  >
+    {{ snackbarMessage }}
+  </VSnackbar>
 </template>
 
 <style lang="scss" scoped>

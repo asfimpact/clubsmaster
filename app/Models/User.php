@@ -12,7 +12,7 @@ use Carbon\Carbon;
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, \Laravel\Sanctum\HasApiTokens;
+    use HasFactory, Notifiable, \Laravel\Sanctum\HasApiTokens, \Laravel\Cashier\Billable;
 
     /**
      * The attributes that are mass assignable.
@@ -49,7 +49,7 @@ class User extends Authenticatable
      *
      * @var array
      */
-    protected $appends = ['computed_status'];
+    protected $appends = ['computed_status', 'current_plan'];
 
     /**
      * Get the attributes that should be cast.
@@ -91,18 +91,29 @@ class User extends Authenticatable
     }
 
     /**
-     * Relationships
+     * Get the current plan details if the user has a subscription.
+     */
+    public function getCurrentPlanAttribute()
+    {
+        $subscription = $this->subscription()->with('plan')->first();
+        return $subscription ? $subscription->plan : null;
+    }
+
+
+    /**
+     * Get the user's subscription (for eager loading).
      */
     public function subscription()
     {
-        return $this->hasOne(Subscription::class);
+        return $this->hasOne(Subscription::class)->where('type', 'default');
     }
 
     /**
      * Check if user has an active subscription.
+     * Uses Cashier's native subscribed() method.
      */
     public function hasActiveSubscription()
     {
-        return $this->subscription && Carbon::parse($this->subscription->end_date)->isFuture();
+        return $this->subscribed('default');
     }
 }

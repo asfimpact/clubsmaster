@@ -19,6 +19,16 @@ export const useApi = createFetch({
         }
       }
       
+      // Ensure Content-Type is set and body is stringified for JSON requests
+      if (options.body && typeof options.body === 'object') {
+        options.headers = {
+          ...options.headers,
+          'Content-Type': 'application/json',
+        }
+        // Stringify the body if it's an object
+        options.body = JSON.stringify(options.body)
+      }
+      
       return { options }
     },
     afterFetch(ctx) {

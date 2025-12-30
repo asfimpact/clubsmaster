@@ -24,31 +24,37 @@ class SubscriptionController extends Controller
         $user = Auth::user();
         $plan = Plan::findOrFail($request->plan_id);
 
-        // Calculate Expiry using Database as Source of Truth
+        // Calculate trial duration using Database as Source of Truth
         $validityDays = ($request->frequency === 'yearly')
-            ? ($plan->yearly_duration_days ?? 365) // Fallback 365 if column is somehow null
+            ? ($plan->yearly_duration_days ?? 365)
             : $plan->duration_days;
 
-        $expiresAt = Carbon::now()->addDays($validityDays);
+        // Cancel any existing subscriptions first
+        $existingSubscription = $user->subscriptions()->where('type', 'default')->first();
+        if ($existingSubscription) {
+            $existingSubscription->delete();
+        }
 
-        // Update or Create Subscription
-        // Assuming one active subscription per user logic
-        $subscription = Subscription::updateOrCreate(
-            ['user_id' => $user->id],
-            [
-                'plan_id' => $plan->id,
-                'start_date' => Carbon::now(),
-                'end_date' => $expiresAt,
-                'status' => 'active',
-                // Add price/frequency logging here if you have columns for it in subscriptions table
-                // For now, minimal schema assumption
-            ]
-        );
+        // Create subscription directly for free plans (no Stripe API call)
+        // We MUST set 'stripe_status' to 'active' for Cashier's subscribed() check to pass.
+        // We use 'trial_ends_at' to handle the duration.
+        $subscription = Subscription::create([
+            'user_id' => $user->id,
+            'type' => 'default',
+            'plan_id' => $plan->id,
+            'stripe_id' => 'free_' . \Illuminate\Support\Str::random(10), // Dummy Stripe ID for consistency
+            'stripe_status' => 'active', // CRITICAL: Makes $user->subscribed() return true
+            'stripe_price' => 'free-plan', // Placeholder price ID
+            'quantity' => 1,
+            'trial_ends_at' => Carbon::now()->addDays($validityDays),
+            'ends_at' => null, // Stays active until trial ends
+        ]);
 
         // Return updated user data with subscription plan loaded
         return response()->json([
-            'message' => 'Subscription updated successfully',
-            'user' => $user->load(['subscription.plan'])
+            'message' => 'Subscription activated successfully! You have ' . $validityDays . ' days of access.',
+            'user' => $user->fresh()->load(['subscription.plan']),
+            'subscription' => $subscription->fresh()->load('plan'),
         ]);
     }
 }

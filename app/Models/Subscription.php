@@ -2,32 +2,26 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use Laravel\Cashier\Subscription as CashierSubscription;
 
-class Subscription extends Model
+class Subscription extends CashierSubscription
 {
-    protected $fillable = ['user_id', 'plan_id', 'starts_at', 'expires_at'];
-
-    protected $casts = [
-        'starts_at' => 'datetime',
-        'expires_at' => 'datetime',
-    ];
-
-    public function user()
+    /**
+     * The attributes that should be cast.
+     */
+    protected function casts(): array
     {
-        return $this->belongsTo(User::class);
-    }
-
-    public function plan()
-    {
-        return $this->belongsTo(Plan::class);
+        return array_merge(parent::casts(), [
+            'starts_at' => 'datetime',
+        ]);
     }
 
     /**
-     * Determine if the subscription is expired.
+     * Relationship to the Plan model.
+     * Maintains our custom plan_id field.
      */
-    public function isExpired()
+    public function plan()
     {
-        return $this->expires_at && $this->expires_at->isPast();
+        return $this->belongsTo(Plan::class);
     }
 }
