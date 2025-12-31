@@ -114,7 +114,17 @@ const subscribeToPlan = async (planId) => {
                 return
             }
             
-            if (data.value && data.value.url) {
+            // Check if this was a swap (existing subscriber upgrading/downgrading)
+            if (data.value && data.value.swapped) {
+                // Plan was swapped instantly - no redirect needed
+                snackbarMessage.value = data.value.message || 'Your plan has been updated successfully!'
+                snackbarColor.value = 'success'
+                snackbar.value = true
+                
+                // Refresh user data and plans
+                await fetchPlans()
+                loadingPlanId.value = null
+            } else if (data.value && data.value.url) {
                 // Keep loading state - user is being redirected
                 // Redirect to Stripe Checkout
                 window.location.href = data.value.url
@@ -180,13 +190,16 @@ const confirmFreePlan = async () => {
 
 const fetchPlans = async () => {
     try {
-        // Fetch User first to get subscription
+        // Fetch User first to get subscription & refresh global state
         const { data: userRes } = await useApi('/user')
         if (userRes.value) {
-           activeSubscriptionId.value = userRes.value.subscription?.plan_id // Assuming backend sends subscription or we load it
-           // If backend /user doesn't send sub, we might need /user/billing logic
-           // For now assuming we can get it. If not, we might need to update AuthController to include it.
-           // Actually, earlier update to SubscriptionController returns loaded subscription.
+           userData.value = userRes.value // Sync global cookie
+           activeSubscriptionId.value = userRes.value.subscription?.plan_id
+           
+           // Set toggle to match user's current subscription frequency
+           if (userRes.value.current_subscription_frequency) {
+               annualMonthlyPlanPriceToggler.value = userRes.value.current_subscription_frequency === 'yearly'
+           }
         }
 
         const { data } = await useApi('/user/plans')
@@ -206,8 +219,9 @@ const fetchPlans = async () => {
                     durationDays: plan.duration_days || 30,
                     yearlyDurationDays: plan.yearly_duration_days || 365,
                     isPopular: false,
-                    // Check against active sub
-                    current: activeSubscriptionId.value === plan.id, 
+                    // Check against active sub - must match both plan ID and frequency
+                    current: activeSubscriptionId.value === plan.id && 
+                             userData.value?.current_subscription_frequency === (annualMonthlyPlanPriceToggler.value ? 'yearly' : 'monthly'),
                     features: Array.isArray(plan.features) ? plan.features : []
                 }
              })
@@ -215,6 +229,14 @@ const fetchPlans = async () => {
     } catch (e) {
         console.error("Failed to load plans", e)
     }
+}
+
+// Helper function to check if a plan is the user's current plan
+// This needs to be a function, not a stored value, so it recalculates when toggle changes
+const isPlanCurrent = (planId) => {
+    const currentToggleFreq = annualMonthlyPlanPriceToggler.value ? 'yearly' : 'monthly'
+    return activeSubscriptionId.value === planId && 
+           userData.value?.current_subscription_frequency === currentToggleFreq
 }
 
 onMounted(() => {
@@ -369,18 +391,18 @@ onMounted(() => {
           <!-- 👉 Plan actions -->
           <VBtn
             block
-            :color="plan.current ? 'success' : 'primary'"
+            :color="isPlanCurrent(plan.id) ? 'success' : 'primary'"
             :variant="plan.isPopular ? 'elevated' : 'tonal'"
             :active="false"
-            :disabled="plan.current || loadingPlanId === plan.id"
+            :disabled="isPlanCurrent(plan.id) || loadingPlanId === plan.id"
             :loading="loadingPlanId === plan.id"
-            @click="!plan.current && subscribeToPlan(plan.id)"
+            @click="!isPlanCurrent(plan.id) && subscribeToPlan(plan.id)"
           >
             <template v-if="loadingPlanId === plan.id">
               Redirecting to Checkout...
             </template>
             <template v-else>
-              {{ plan.current ? 'Your Current Plan' : 'Select Plan' }}
+              {{ isPlanCurrent(plan.id) ? 'Your Current Plan' : 'Select Plan' }}
             </template>
           </VBtn>
         </VCardText>

@@ -1,3 +1,107 @@
+#### [2025-12-31] - Subscription Management Enhancements, Frequency-Aware UI & Instant Upgrades
+## 🐛 Bug Fixes
+- **webhookcontroller.php**
+**Fixed `plan_id` Remaining NULL in Database**
+  - Created WebhookController to handle Stripe webhooks
+  - Implemented `handleCheckoutSessionCompleted()` to capture metadata from Checkout Session
+  - Added `handleCustomerSubscriptionCreated()` and `handleCustomerSubscriptionUpdated()` handlers
+  - Metadata now correctly syncs `plan_id` from Stripe to local database
+- **Fixed "Your Current Plan" Showing on Both Monthly and Yearly**
+  - Added `current_subscription_frequency` accessor to User model
+  - Detects subscription frequency by comparing `stripe_price` with plan price IDs
+  - **apppricing.vue**
+  - Implemented `isPlanCurrent()` reactive function in AppPricing component
+  - Toggle now auto-sets to match user's actual subscription frequency
+  - "Current Plan" badge now only shows on matching frequency
+### 🚀 New Features
+- **Instant Plan Upgrades/Downgrades (Swap)**
+  - Implemented conditional routing in StripeController
+  - Existing subscribers with payment methods → Instant swap (no redirect)
+  - New subscribers → Stripe Checkout redirect
+  - Added pro-rated billing support via Cashier's `swap()` method
+  - Shows success snackbar for instant upgrades
+- **Webhook Integration**
+  - Created WebhookController extending Cashier's base controller
+  - Added `/stripe/webhook` route with CSRF exemption
+  - Handles `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`
+  - Automatic `plan_id`, `stripe_status`, and `starts_at` synchronization
+### 🔧 Backend Changes
+- **user.php**
+  - Added `current_subscription_frequency` to `$appends` array in User model
+  - Implemented `getCurrentSubscriptionFrequencyAttribute()` accessor
+  - Updated accessors to use `getRelation()` for better relationship handling
+- **stripecontroller.php**
+  - Added subscription existence check before creating checkout in StripeController
+  - Implemented swap logic for existing subscribers with payment methods
+  - Added logging for swap vs new subscription paths
+  - Returns different responses for swap vs checkout
+  - **WebhookController.php**
+   - (NEW) handles Stripe webhook events, syncing metadata (`plan_id`, `user_id`, `frequency`) to database, sets `stripe_status = 'active'` and `starts_at = now()`
+- **routes/api.php**
+  - Added `POST /stripe/webhook` route
+  - Updated `/api/user` endpoint to eager load `subscription.plan`
+- **bootstrap/app.php**
+  - Added CSRF exemption for `stripe/*` routes
+### 💻 Frontend Changes
+- **Components**
+  - Added `isPlanCurrent(planId)` reactive function for frequency-aware checks in AppPricing.vue
+  - Replaced static `plan.current` property with dynamic function calls
+  - Auto-sets toggle to match user's subscription frequency on load
+  - Handles swap response (instant upgrade) vs checkout response (redirect)
+  - Shows success snackbar for instant plan changes
+  - Refreshes plan data after successful swap
+  - Updated all template references from `plan.current` to `isPlanCurrent(plan.id)`
+### 📁 Database Changes
+- **Migrations**
+  - Made `plan_id` nullable in `subscriptions` table to allow Cashier to create subscription first
+  - Webhook syncs `plan_id` after Cashier creates the record
+  - Prevents 500 errors during subscription creation
+### 📊 Technical Improvements
+- **Frequency Detection Logic**
+  - Compares `subscription.stripe_price` with `plan.stripe_monthly_price_id` and `plan.stripe_yearly_price_id`
+  - Returns `'monthly'` or `'yearly'` based on match
+  - Defaults to `'monthly'` if unable to determine
+- **Reactive UI Updates**
+  - Toggle state changes trigger `isPlanCurrent()` re-evaluation
+  - Vue reactivity ensures "Current Plan" badge updates dynamically
+  - No page refresh needed after plan changes
+- **Webhook Reliability**
+  - `handleCheckoutSessionCompleted` is primary source for metadata
+  - `handleCustomerSubscriptionCreated` acts as fallback
+  - Both methods update `plan_id` to ensure data consistency
+### 🎯 User Experience Improvements
+**Before:**
+- ❌ `plan_id` stayed NULL after subscription
+- ❌ "Current Plan" showed on both monthly and yearly
+- ❌ No visual feedback for instant upgrades
+**After:**
+- ✅ `plan_id` syncs correctly from Stripe metadata
+- ✅ "Current Plan" only shows on matching frequency
+- ✅ Existing users get instant upgrades (swap)
+- ✅ New users go through Stripe Checkout
+- ✅ Success snackbar for instant plan changes
+- ✅ Toggle auto-sets to user's current frequency
+### 📝 Files Modified & Added
+**Backend:**
+- WebhookController.php
+- StripeController.php
+- User.php
+- routes/api.php
+- routes/web.php
+- bootstrap/app.php
+**Frontend:**
+- AppPricing.vue
+**Database:**
+- 2025_12_30_230309_make_plan_id_nullable_in_subscriptions_table.php
+### 🔍 Debugging Enhancements
+- Added `Log::info()` statements for webhook processing
+- Added `Log::warning()` for missing metadata
+- Added `Log::error()` for webhook failures
+- Logs show swap vs new subscription path
+- Console logs for frequency-aware logic (temporary, removed after testing)
+**Commit**
+- [pending] - "Subscription Management Enhancements, Frequency-Aware UI & Instant Upgrades"
+
 #### [2025-12-30] - Stripe Checkout , Free Plan Integration & logic
 - **Stripe Checkout Integration**
   - Added `StripeController` to handle secure checkout session creation.

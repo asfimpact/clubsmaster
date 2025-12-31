@@ -67,21 +67,64 @@ class StripeController extends Controller
         }
 
         try {
-            // Create Stripe Checkout Session using Cashier
-            $checkout = $user->newSubscription('default', $stripePriceId)
-                ->checkout([
-                    'success_url' => url('/?payment=success'),
-                    'cancel_url' => url('/pages/pricing?payment=cancelled'),
-                    'metadata' => [
-                        'user_id' => $user->id, // Added for easier debugging in Stripe Dashboard
-                        'plan_id' => $plan->id,
-                        'frequency' => $request->frequency,
-                    ],
+            // Check if user already has an active subscription
+            // Use direct query to avoid conflict with custom subscription() relationship
+            $existingSubscription = \App\Models\Subscription::where('user_id', $user->id)
+                ->where('type', 'default')
+                ->where('stripe_status', 'active')
+                ->first();
+
+            if ($existingSubscription) {
+                // EXISTING SUBSCRIBER: Use swap to change plan/frequency
+                Log::info('Existing subscriber detected - using swap', [
+                    'user_id' => $user->id,
+                    'current_price' => $existingSubscription->stripe_price,
+                    'new_price' => $stripePriceId,
                 ]);
 
-            return response()->json([
-                'url' => $checkout->url,
-            ]);
+                $subscription = $existingSubscription;
+
+                // Swap to the new price (Cashier handles pro-rating automatically)
+                $subscription->swap($stripePriceId);
+
+                // Update our custom plan_id field (Cashier doesn't know about this)
+                $subscription->update([
+                    'plan_id' => $plan->id,
+                ]);
+
+                Log::info('Subscription swapped successfully', [
+                    'user_id' => $user->id,
+                    'plan_id' => $plan->id,
+                    'stripe_price' => $stripePriceId,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Your plan has been updated successfully!',
+                    'swapped' => true,
+                ]);
+            } else {
+                // NEW SUBSCRIBER: Create Stripe Checkout Session
+                Log::info('New subscriber - creating checkout session', [
+                    'user_id' => $user->id,
+                    'plan_id' => $plan->id,
+                ]);
+
+                $checkout = $user->newSubscription('default', $stripePriceId)
+                    ->checkout([
+                        'success_url' => url('/?payment=success'),
+                        'cancel_url' => url('/pages/pricing?payment=cancelled'),
+                        'metadata' => [
+                            'user_id' => $user->id,
+                            'plan_id' => $plan->id,
+                            'frequency' => $request->frequency,
+                        ],
+                    ]);
+
+                return response()->json([
+                    'url' => $checkout->url,
+                ]);
+            }
         } catch (\Exception $e) {
             Log::error('Stripe Checkout Error: ' . $e->getMessage(), [
                 'exception' => get_class($e),

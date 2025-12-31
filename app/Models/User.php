@@ -49,7 +49,7 @@ class User extends Authenticatable
      *
      * @var array
      */
-    protected $appends = ['computed_status', 'current_plan'];
+    protected $appends = ['computed_status', 'current_plan', 'current_subscription_frequency'];
 
     /**
      * Get the attributes that should be cast.
@@ -95,8 +95,45 @@ class User extends Authenticatable
      */
     public function getCurrentPlanAttribute()
     {
-        $subscription = $this->subscription()->with('plan')->first();
+        // Use already-loaded relationship if available
+        if ($this->relationLoaded('subscription')) {
+            $subscription = $this->getRelation('subscription');
+        } else {
+            $subscription = $this->subscription()->with('plan')->first();
+        }
+
         return $subscription ? $subscription->plan : null;
+    }
+
+    /**
+     * Get the current subscription frequency (monthly or yearly).
+     */
+    public function getCurrentSubscriptionFrequencyAttribute()
+    {
+        // Use already-loaded relationship if available
+        if ($this->relationLoaded('subscription')) {
+            $subscription = $this->getRelation('subscription');
+            if ($subscription && !$subscription->relationLoaded('plan')) {
+                $subscription->load('plan');
+            }
+        } else {
+            $subscription = $this->subscription()->with('plan')->first();
+        }
+
+        if (!$subscription || !$subscription->plan) {
+            return null;
+        }
+
+        // Compare stripe_price with plan's price IDs to determine frequency
+        if ($subscription->stripe_price === $subscription->plan->stripe_yearly_price_id) {
+            return 'yearly';
+        }
+        if ($subscription->stripe_price === $subscription->plan->stripe_monthly_price_id) {
+            return 'monthly';
+        }
+
+        // Default to monthly if we can't determine
+        return 'monthly';
     }
 
 
