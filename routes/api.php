@@ -16,6 +16,20 @@ Route::middleware('auth:sanctum')->post('/user/subscribe', [\App\Http\Controller
 // Stripe Checkout
 Route::middleware('auth:sanctum')->post('/stripe/checkout', [\App\Http\Controllers\StripeController::class, 'checkout']);
 
+// Payment Methods Management
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/payment-methods', [\App\Http\Controllers\StripeController::class, 'listPaymentMethods']);
+    Route::post('/payment-methods/setup-intent', [\App\Http\Controllers\StripeController::class, 'createSetupIntent']);
+    Route::post('/payment-methods/{pmId}/set-default', [\App\Http\Controllers\StripeController::class, 'setDefaultPaymentMethod']);
+    Route::delete('/payment-methods/{pmId}', [\App\Http\Controllers\StripeController::class, 'deletePaymentMethod']);
+});
+
+// Billing Address
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/billing-address', [\App\Http\Controllers\StripeController::class, 'getBillingAddress']);
+    Route::post('/billing-address', [\App\Http\Controllers\StripeController::class, 'updateBillingAddress']);
+});
+
 // Auth Group
 Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register']);

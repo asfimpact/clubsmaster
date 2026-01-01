@@ -159,4 +159,12 @@ class User extends Authenticatable
     {
         return $this->subscribed('default');
     }
+
+    /**
+     * Get the user's billing address.
+     */
+    public function billingAddress()
+    {
+        return $this->hasOne(\App\Models\BillingAddress::class);
+    }
 }

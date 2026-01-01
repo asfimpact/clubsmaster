@@ -1,4 +1,176 @@
+#### [2026-01-01] - Payment Method & Billing Address Management Implementation
+- **Payment Methods Management:**
+  - List all payment methods with brand, last4, expiry date, and default badge
+  - Add new payment methods via Stripe Elements (card input form)
+  - Set payment method as default
+  - Delete payment method with safety checks (prevents deletion of last card with active subscription)
+  - Real-time sync with Stripe API
+  - Empty state when no payment methods exist
+  - Skeleton loader during initial fetch for professional UX
+- **Billing Address Management:**
+  - Local storage of billing addresses in `billing_addresses` table
+  - Automatic sync to Stripe customer object
+  - Form validation for address fields (line1, line2, city, state, postal_code, country)
+  - Country dropdown with ISO 2-letter codes (GB, US, CA, AU, etc.)
+  - Informational note: "Billing Information (for Invoices) - This information will appear on your official receipts"
+  - Skeleton loader during initial fetch
+- **User Experience Enhancements:**
+  - Professional loading states with Vuetify skeleton loaders (no more "No records found" flicker)
+  - Branded Vuetify confirmation dialog for delete actions (replaced browser confirm popup)
+  - Snackbar notifications for all actions (success/error)
+  - Separate error states vs empty states (red for errors, blue for empty)
+  - Stripe Elements configured to hide postal code field (collected in billing address form instead)
+## 🐛 Bug Fixes
+- **Payment Method Deletion:**
+  - Fixed backend check to properly count payment methods before deletion
+  - Fixed frontend error handling to display actual backend error messages
+  - Replaced `useApi` with native AccountSettingsBillingAndPlans API for proper error response handling
+  - Fixed authentication by using `useCookie('accessToken')` instead of `localStorage`
+  - Backend now correctly blocks deletion of last payment method when user has active subscription
 
+- **Loading States:**
+  - Added `isLoadingPaymentMethods` and `isLoadingBillingAddress` refs (initialized as `true`)
+  - Wrapped fetch functions with `finally` blocks to ensure loading state always resets
+  - Eliminated UI flicker on page load
+
+## 🔧 Technical Improvements
+- **Backend ([StripeController.php](app/Http/Controllers/StripeController.php)):**
+  - Added [listPaymentMethods()] - Returns mapped payment method details from Stripe
+  - Added [createSetupIntent()] - Returns client_secret for adding new cards
+  - Added [setDefaultPaymentMethod()] - Sets default and syncs `pm_type`/`pm_last_four` to users table
+  - Added [deletePaymentMethod()] - Deletes payment method with active subscription guard
+  - Added [getBillingAddress()] - Fetches billing address from local DB
+  - Added [updateBillingAddress()] - Saves to local DB and syncs to Stripe
+  - Added debug logging for delete attempts (user_id, active_subs_count, payment_methods_count)
+- **Database:**
+  - Created [BillingAddress](app/Http/Controllers/StripeController.php model with fillable fields and user relationship
+  - Created `billing_addresses` table migration with unique constraint on user_id
+  - Added `billingAddress()` hasOne relationship to User model
+- **Frontend ([AccountSettingsBillingAndPlans.vue](resources/js/views/pages/account-settings/AccountSettingsBillingAndPlans.vue)):
+  - Installed `@stripe/stripe-js` package (v8.6.0) via pnpm
+  - Integrated Stripe Elements for card input with proper mounting via `nextTick()`
+  - Replaced hardcoded payment methods with live API data
+  - Replaced hardcoded billing address with live API data
+  - Used native API for delete operation to properly handle error responses
+  - Added loading states, error states, and skeleton loaders
+  - Configured Stripe Elements with `hidePostalCode: true`
+- **API Routes ([routes/api.php](routes/api.php)):**
+  - `GET /api/payment-methods` - List payment methods
+  - `POST /api/payment-methods/setup-intent` - Create SetupIntent
+  - `POST /api/payment-methods/{pmId}/set-default` - Set default payment method
+  - `DELETE /api/payment-methods/{pmId}` - Delete payment method
+  - `GET /api/billing-address` - Get billing address
+  - `POST /api/billing-address` - Update billing address
+## 🔒 Security & Compliance
+- **PCI Compliance:**
+  - No credit card numbers or CVVs stored locally (only Stripe `pm_...` IDs)
+  - Card input handled entirely by Stripe Elements (PCI-compliant iframe)
+  - SetupIntent used for adding payment methods (SCA-compliant)
+- **Data Protection:**
+  - Payment method deletion blocked if it's the last card and user has active subscription
+  - Direct Stripe API queries used instead of cached data for critical operations
+  - Billing address synced to Stripe customer object for consistency
+## 📦 Dependencies
+- Added: `@stripe/stripe-js: ^8.6.0`
+## 📝 Files Modified
+- Backend:
+  - [app/Http/Controllers/StripeController.php] - Added 6 new methods
+  - [app/Models/User.php] - Added billingAddress relationship
+  - [routes/api.php] - Added 6 new API routes
+- Database:
+  - [app/Models/BillingAddress.php] - New model
+  - [database/migrations/2026_01_01_093209_create_billing_addresses_table.php] - New migration
+- Frontend:
+  - resources/js/views/pages/account-settings/AccountSettingsBillingAndPlans.vue- Complete overhaul
+  - `package.json` - Added @stripe/stripe-js
+  - `pnpm-lock.yaml` - Updated dependencies
+**Commit Message:**
+[pending] - Implement payment method & billing address management with Stripe integration
+
+#### [2026-01-01] - Payment Method Sync & Upgrade Flow Fixes
+## 🐛 Critical Bug Fixes
+# **1. Payment Method Not Syncing to Database**
+- **Problem:** `pm_type` and `pm_last_four` remained NULL after subscription creation
+- **Root Cause:** Columns not in User model's `$fillable` array
+- **Fix:** Added `pm_type` and `pm_last_four` to `$fillable` in User.php
+- **Impact:** Payment method details now display correctly on billing page
+### **2. Duplicate Subscriptions Created**
+- **Problem:** Multiple active subscriptions for same user after upgrade
+- **Root Cause:** Webhook didn't cancel old subscription when new one created via checkout
+- **Fix:** Added automatic cancellation of old subscriptions in [handleCheckoutSessionCompleted] WebhookController.php
+- **Impact:** Enforces "One Active Subscription" rule
+### **3. Upgrade Flow Redirected to Checkout Despite Having Payment Method**
+- **Problem:** Users with saved cards were redirected to Stripe Checkout instead of instant swap
+- **Root Cause:** `hasDefaultPaymentMethod()` checked local DB only, not Stripe
+- **Fix:** Replaced with direct Stripe API check using `$user->paymentMethods()
+- **Impact:** Users with payment methods get instant upgrades (no redirect)
+# **4. New Users Without stripe_id Failed to Subscribe**
+- **Problem:** "The resource ID cannot be null or whitespace" error
+- **Root Cause:** Users without `stripe_id` couldn't create checkout sessions
+- **Fix:** Added `createOrGetStripeCustomer()` call with `refresh()` before checkout
+- **Impact:** Fresh users can subscribe successfully
+## **5. Race Condition: plan_id Remained NULL**
+- **Problem:** `plan_id` not synced from Stripe metadata to database
+- **Root Cause:** `checkout.session.completed` arrived before subscription existed
+- **Fix:** Added `withMetadata()` to attach metadata directly to Stripe Subscription object
+- **Impact:** `plan_id` syncs correctly regardless of webhook order
+### **Payment Method Sync System**
+- **WebhookController.php**
+  - Added payment method sync in handleCustomerSubscriptionCreated
+  - Added payment method sync in handleCustomerSubscriptionUpdated
+  - Added new handlePaymentMethodAttached webhook handler
+  - Fetches payment methods from Stripe API and saves to local DB
+  - Logs all sync operations for debugging
+### **Intelligent Upgrade Flow**
+- **StripeController.php**
+  - Checks Stripe API directly for payment methods (not just local DB)
+  - Users **with** payment method → Instant swap (no redirect)
+  - Users **without** payment method → Redirect to Stripe Checkout
+  - Automatic Stripe customer creation for new users
+  - Comprehensive error handling and logging
+### **Frontend Optimization**
+- **AppPricing.vue**
+  - Added 2-second delay after swap before refreshing data
+  - Allows webhooks time to process and sync payment methods
+  - Prevents "No Card on File" flash during upgrade
+  - Shows success message immediately while data syncs in background
+## 🔧 Technical Improvements
+### **Backend Changes**
+**User.php**
+```php
+protected $fillable = [
+    // ... existing fields
+    'pm_type',           // Payment method type (visa, mastercard, etc.)
+    'pm_last_four',      // Last 4 digits of card
+];
+```
+- **StripeController.php**
+- Line 77-123: Added Stripe API payment method check before swap
+- Line 166-191: Added automatic Stripe customer creation for new users
+- Replaced hasDefaultPaymentMethod() with $user->paymentMethods()->isNotEmpty()
+- Added try-catch error handling for customer creation
+- **WebhookController.php**
+- Line 45-75: Payment method sync in handleCustomerSubscriptionCreated
+- Line 110-145: Payment method sync in handleCustomerSubscriptionUpdated
+- Line 174-195: Old subscription cancellation in handleCheckoutSessionCompleted
+- Line 217-246: New handlePaymentMethodAttached handler
+**Testing Completed**
+Scenarios Tested:
+✅ New user subscribes (no stripe_id) → Works
+✅ User with payment method upgrades → Instant swap
+✅ User without payment method upgrades → Redirects to checkout
+✅ Multiple subscriptions → Old one cancelled automatically
+✅ Payment method sync → pm_type and pm_last_four populated
+✅ Webhook race conditions → plan_id syncs correctly
+**Files Modified**
+- Backend:
+app/Models/User.php
+app/Http/Controllers/StripeController.php
+app/Http/Controllers/WebhookController.php
+- Frontend:
+resources/js/components/AppPricing.vue
+**Commit Message:**
+[8817f1a]- Complete payment method sync and upgrade flow overhaul
 
 #### [2025-12-31] - Subscription Management Enhancements, Frequency-Aware UI & Instant Upgrades
 ## 🐛 Bug Fixes

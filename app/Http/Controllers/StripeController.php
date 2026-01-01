@@ -213,9 +213,215 @@ class StripeController extends Controller
                 'frequency' => $request->frequency,
             ]);
 
+
             return response()->json([
                 'error' => 'Failed to create checkout session. Please try again later.',
                 'debug' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
+    }
+
+    /**
+     * List all payment methods for the authenticated user
+     */
+    public function listPaymentMethods(Request $request)
+    {
+        $user = $request->user();
+
+        $paymentMethods = $user->paymentMethods()->map(function ($pm) use ($user) {
+            return [
+                'id' => $pm->id,
+                'brand' => $pm->card->brand,
+                'last4' => $pm->card->last4,
+                'exp_month' => $pm->card->exp_month,
+                'exp_year' => $pm->card->exp_year,
+                'is_default' => $pm->id === $user->defaultPaymentMethod()?->id,
+            ];
+        });
+
+        return response()->json(['payment_methods' => $paymentMethods]);
+    }
+
+    /**
+     * Create a SetupIntent for adding a new payment method
+     */
+    public function createSetupIntent(Request $request)
+    {
+        $user = $request->user();
+
+        try {
+            $intent = $user->createSetupIntent();
+
+            return response()->json([
+                'client_secret' => $intent->client_secret,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to create SetupIntent', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to create payment setup. Please try again.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Set a payment method as default
+     */
+    public function setDefaultPaymentMethod(Request $request, $pmId)
+    {
+        $user = $request->user();
+
+        try {
+            $user->updateDefaultPaymentMethod($pmId);
+
+            // Also sync the pm_last_four to the users table immediately
+            $pm = $user->findPaymentMethod($pmId);
+
+            if ($pm && isset($pm->card)) {
+                $user->update([
+                    'pm_type' => $pm->card->brand,
+                    'pm_last_four' => $pm->card->last4,
+                ]);
+            }
+
+            Log::info('Default payment method updated', [
+                'user_id' => $user->id,
+                'pm_id' => $pmId,
+            ]);
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('Failed to set default payment method', [
+                'user_id' => $user->id,
+                'pm_id' => $pmId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to set default payment method.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete a payment method
+     */
+    public function deletePaymentMethod(Request $request, $pmId)
+    {
+        $user = $request->user();
+
+        // Check if user has active subscription
+        $activeSubCount = \App\Models\Subscription::where('user_id', $user->id)
+            ->where('stripe_status', 'active')
+            ->count();
+
+        $paymentMethodsCount = $user->paymentMethods()->count();
+
+        // DEBUG: Trace this
+        Log::info("Delete Payment Method Attempt", [
+            'user_id' => $user->id,
+            'active_subs_count' => $activeSubCount,
+            'payment_methods_count' => $paymentMethodsCount,
+            'pm_id' => $pmId
+        ]);
+
+        if ($activeSubCount > 0) {
+            if ($paymentMethodsCount <= 1) {
+                Log::warning("Delete blocked - last payment method", [
+                    'user_id' => $user->id,
+                    'pm_id' => $pmId
+                ]);
+
+                return response()->json([
+                    'error' => 'Cannot delete your only payment method while subscription is active.',
+                ], 400);
+            }
+        }
+
+        try {
+            $user->deletePaymentMethod($pmId);
+
+            Log::info('Payment method deleted', [
+                'user_id' => $user->id,
+                'pm_id' => $pmId,
+            ]);
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('Failed to delete payment method', [
+                'user_id' => $user->id,
+                'pm_id' => $pmId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to delete payment method.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Get or update billing address
+     */
+    public function getBillingAddress(Request $request)
+    {
+        $user = $request->user();
+        $address = $user->billingAddress;
+
+        return response()->json(['address' => $address]);
+    }
+
+    /**
+     * Update billing address
+     */
+    public function updateBillingAddress(Request $request)
+    {
+        $validated = $request->validate([
+            'line1' => 'required|string|max:255',
+            'line2' => 'nullable|string|max:255',
+            'city' => 'required|string|max:255',
+            'state' => 'nullable|string|max:255',
+            'postal_code' => 'required|string|max:20',
+            'country' => 'required|string|size:2',
+        ]);
+
+        $user = $request->user();
+
+        try {
+            // Save to local DB
+            $address = $user->billingAddress()->updateOrCreate(
+                ['user_id' => $user->id],
+                $validated
+            );
+
+            // Sync to Stripe
+            if ($user->stripe_id) {
+                $user->updateStripeCustomer([
+                    'address' => [
+                        'line1' => $validated['line1'],
+                        'line2' => $validated['line2'],
+                        'city' => $validated['city'],
+                        'state' => $validated['state'],
+                        'postal_code' => $validated['postal_code'],
+                        'country' => $validated['country'],
+                    ],
+                ]);
+
+                Log::info('Billing address synced to Stripe', ['user_id' => $user->id]);
+            }
+
+            return response()->json(['address' => $address]);
+        } catch (\Exception $e) {
+            Log::error('Failed to update billing address', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to update billing address.',
             ], 500);
         }
     }

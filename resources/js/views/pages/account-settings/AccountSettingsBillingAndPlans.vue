@@ -2,67 +2,58 @@
 import BillingHistoryTable from './BillingHistoryTable.vue'
 import mastercard from '@images/icons/payments/mastercard.png'
 import visa from '@images/icons/payments/visa.png'
+import { loadStripe } from '@stripe/stripe-js'
 
 const selectedPaymentMethod = ref('credit-debit-atm-card')
 const isPricingPlanDialogVisible = ref(false)
 const isConfirmDialogVisible = ref(false)
-const isCardEditDialogVisible = ref(false)
-const isCardDetailSaveBilling = ref(false)
+const isAddCardDialogVisible = ref(false)
+const isDeleteCardDialogVisible = ref(false)
+const cardToDelete = ref(null)
 
-const creditCards = [
-  {
-    name: 'Tom McBride',
-    number: '5531234567899856',
-    expiry: '12/24',
-    isPrimary: true,
-    type: 'visa',
-    cvv: '456',
-    image: mastercard,
-  },
-  {
-    name: 'Mildred Wagner',
-    number: '4851234567895896',
-    expiry: '10/27',
-    isPrimary: false,
-    type: 'mastercard',
-    cvv: '123',
-    image: visa,
-  },
-]
+// Snackbar
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('success')
+
+// Loading States
+const isLoadingPaymentMethods = ref(true)
+const isLoadingBillingAddress = ref(true)
+
+// Error States
+const paymentMethodsError = ref(false)
+const billingAddressError = ref(false)
+
+// API Data
+const paymentMethods = ref([])
+const billingAddress = ref({
+  line1: '',
+  line2: '',
+  city: '',
+  state: '',
+  postal_code: '',
+  country: 'GB',
+})
+
+// Stripe
+const stripeInstance = ref(null)
+const cardElement = ref(null)
+const clientSecret = ref(null)
+const loadingCard = ref(false)
 
 const countryList = [
-  'United States',
-  'Canada',
-  'United Kingdom',
-  'Australia',
-  'New Zealand',
-  'India',
-  'Russia',
-  'China',
-  'Japan',
+  { value: 'GB', title: 'United Kingdom' },
+  { value: 'US', title: 'United States' },
+  { value: 'CA', title: 'Canada' },
+  { value: 'AU', title: 'Australia' },
+  { value: 'NZ', title: 'New Zealand' },
+  { value: 'IN', title: 'India' },
+  { value: 'RU', title: 'Russia' },
+  { value: 'CN', title: 'China' },
+  { value: 'JP', title: 'Japan' },
 ]
 
-const currentCardDetails = ref()
-
-const openEditCardDialog = cardDetails => {
-  currentCardDetails.value = cardDetails
-  isCardEditDialogVisible.value = true
-}
-
-const cardNumber = ref(135632156548789)
-const cardName = ref('john Doe')
-const cardExpiryDate = ref('05/24')
-const cardCvv = ref(420)
-
-const resetPaymentForm = () => {
-  cardNumber.value = 135632156548789
-  cardName.value = 'john Doe'
-  cardExpiryDate.value = '05/24'
-  cardCvv.value = 420
-  selectedPaymentMethod.value = 'credit-debit-atm-card'
-}
-
-// --- API INTEGRATION ---
+// Existing plan details fetching
 const planDetails = ref({
     plan_name: 'Loading...',
     plan_price: 0,
@@ -86,8 +77,245 @@ const fetchBilling = async () => {
     }
 }
 
+// Fetch payment methods
+const fetchPaymentMethods = async () => {
+  isLoadingPaymentMethods.value = true
+  paymentMethodsError.value = false
+  
+  try {
+    const { data } = await useApi('/payment-methods')
+    if (data.value && data.value.payment_methods) {
+      paymentMethods.value = data.value.payment_methods
+    }
+  } catch (e) {
+    console.error('Failed to fetch payment methods', e)
+    paymentMethodsError.value = true
+  } finally {
+    isLoadingPaymentMethods.value = false
+  }
+}
+
+// Fetch billing address
+const fetchBillingAddress = async () => {
+  isLoadingBillingAddress.value = true
+  billingAddressError.value = false
+  
+  try {
+    const { data } = await useApi('/billing-address')
+    if (data.value && data.value.address) {
+      billingAddress.value = data.value.address
+    }
+  } catch (e) {
+    console.error('Failed to fetch billing address', e)
+    billingAddressError.value = true
+  } finally {
+    isLoadingBillingAddress.value = false
+  }
+}
+
+// Set default payment method
+const setDefaultPaymentMethod = async (pmId) => {
+  try {
+    const { data } = await useApi(`/payment-methods/${pmId}/set-default`, { method: 'POST' })
+    if (data.value && data.value.success) {
+      await fetchPaymentMethods()
+      
+      // Show success snackbar
+      snackbarMessage.value = 'Payment method set as default'
+      snackbarColor.value = 'success'
+      snackbar.value = true
+    }
+  } catch (e) {
+    snackbarMessage.value = 'Failed to set default payment method'
+    snackbarColor.value = 'error'
+    snackbar.value = true
+    console.error('Failed to set default payment method', e)
+  }
+}
+
+// Delete payment method
+const openDeleteCardDialog = (pmId) => {
+  cardToDelete.value = pmId
+  isDeleteCardDialogVisible.value = true
+}
+
+const deletePaymentMethod = async () => {
+  const pmId = cardToDelete.value
+  if (!pmId) return
+  
+  isDeleteCardDialogVisible.value = false
+  
+  try {
+    const token = useCookie('accessToken').value
+    const response = await fetch(`/api/payment-methods/${pmId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    const data = await response.json()
+    
+    console.log('Delete response:', { status: response.status, data })
+    
+    if (!response.ok) {
+      // Error response
+      const errorMsg = data.error || data.message || 'Failed to delete payment method'
+      snackbarMessage.value = errorMsg
+      snackbarColor.value = 'error'
+      snackbar.value = true
+      return
+    }
+    
+    // Success
+    await fetchPaymentMethods()
+    
+    snackbarMessage.value = 'Payment method deleted successfully'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (e) {
+    console.error('Delete error caught:', e)
+    
+    snackbarMessage.value = 'Failed to delete payment method'
+    snackbarColor.value = 'error'
+    snackbar.value = true
+  }
+}
+
+// Open add card dialog
+const openAddCardDialog = async () => {
+  isAddCardDialogVisible.value = true
+  
+  // Get SetupIntent client secret
+  try {
+    const { data } = await useApi('/payment-methods/setup-intent', { method: 'POST' })
+    if (data.value && data.value.client_secret) {
+      clientSecret.value = data.value.client_secret
+      
+      // Initialize Stripe Elements after dialog opens
+      await nextTick()
+      await initializeStripeElements()
+    }
+  } catch (e) {
+    console.error('Failed to create SetupIntent', e)
+    snackbarMessage.value = 'Failed to initialize payment form'
+    snackbarColor.value = 'error'
+    snackbar.value = true
+    isAddCardDialogVisible.value = false
+  }
+}
+
+// Initialize Stripe Elements
+const initializeStripeElements = async () => {
+  try {
+    // Load Stripe (use your publishable key)
+    const stripe = await loadStripe(import.meta.env.VITE_STRIPE_KEY || 'pk_test_...')
+    stripeInstance.value = stripe
+    
+    const elements = stripe.elements()
+    const card = elements.create('card', {
+      hidePostalCode: true, // Hide postal code - we'll collect it in billing address form
+      style: {
+        base: {
+          fontSize: '16px',
+          color: '#424770',
+          '::placeholder': {
+            color: '#aab7c4',
+          },
+        },
+        invalid: {
+          color: '#9e2146',
+        },
+      },
+    })
+    
+    await nextTick()
+    const cardElementDiv = document.getElementById('card-element')
+    if (cardElementDiv) {
+      card.mount('#card-element')
+      cardElement.value = card
+    }
+  } catch (e) {
+    console.error('Failed to initialize Stripe Elements', e)
+  }
+}
+
+// Submit new card
+const submitNewCard = async () => {
+  if (!stripeInstance.value || !cardElement.value || !clientSecret.value) return
+  
+  loadingCard.value = true
+  
+  try {
+    const { setupIntent, error } = await stripeInstance.value.confirmCardSetup(clientSecret.value, {
+      payment_method: {
+        card: cardElement.value,
+      },
+    })
+    
+    if (error) {
+      snackbarMessage.value = error.message
+      snackbarColor.value = 'error'
+      snackbar.value = true
+    } else if (setupIntent.status === 'succeeded') {
+      // Success! Close dialog and refresh payment methods
+      isAddCardDialogVisible.value = false
+      await fetchPaymentMethods()
+      
+      snackbarMessage.value = 'Card added successfully!'
+      snackbarColor.value = 'success'
+      snackbar.value = true
+    }
+  } catch (e) {
+    console.error('Failed to add card', e)
+    snackbarMessage.value = 'Failed to add card'
+    snackbarColor.value = 'error'
+    snackbar.value = true
+  } finally {
+    loadingCard.value = false
+  }
+}
+
+// Save billing address
+const saveBillingAddress = async () => {
+  try {
+    const { data } = await useApi('/billing-address', {
+      method: 'POST',
+      body: billingAddress.value,
+    })
+    
+    if (data.value && data.value.address) {
+      billingAddress.value = data.value.address
+      
+      snackbarMessage.value = 'Billing address saved successfully!'
+      snackbarColor.value = 'success'
+      snackbar.value = true
+    }
+  } catch (e) {
+    console.error('Failed to save billing address', e)
+    snackbarMessage.value = 'Failed to save billing address'
+    snackbarColor.value = 'error'
+    snackbar.value = true
+  }
+}
+
+// Get card brand image
+const getCardImage = (brand) => {
+  const brandMap = {
+    visa: visa,
+    mastercard: mastercard,
+    amex: mastercard, // fallback
+    discover: mastercard, // fallback
+  }
+  return brandMap[brand?.toLowerCase()] || mastercard
+}
+
 onMounted(() => {
     fetchBilling()
+    fetchPaymentMethods()
+    fetchBillingAddress()
 })
 </script>
 
@@ -223,183 +451,177 @@ onMounted(() => {
     <VCol cols="12">
       <VCard title="Payment Methods">
         <VCardText>
-          <VForm @submit.prevent="() => {}">
-            <VRow>
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <VRow>
-                  <!-- 👉 card type switch -->
-                  <VCol cols="12">
-                    <VRadioGroup
-                      v-model="selectedPaymentMethod"
-                      inline
-                    >
-                      <VRadio
-                        value="credit-debit-atm-card"
-                        label="Credit/Debit/ATM Card"
-                        color="primary"
-                        class="me-6"
-                      />
-                      <VRadio
-                        value="paypal-account"
-                        label="Paypal account"
-                        color="primary"
-                      />
-                    </VRadioGroup>
-                  </VCol>
+          <div class="d-flex justify-space-between align-center mb-6">
+            <h6 class="text-body-1 text-high-emphasis font-weight-medium">
+              My Cards
+            </h6>
+            <VBtn
+              size="small"
+              @click="openAddCardDialog"
+            >
+              Add New Card
+            </VBtn>
+          </div>
 
-                  <VCol cols="12">
-                    <VRow>
-                      <!-- 👉 Card Number -->
-                      <VCol cols="12">
-                        <AppTextField
-                          v-model="cardNumber"
-                          label="Card Number"
-                          placeholder="1234 1234 1234 1234"
-                          type="number"
-                        />
-                      </VCol>
+          <!-- Loading Skeleton -->
+          <VSkeletonLoader
+            v-if="isLoadingPaymentMethods"
+            type="image"
+            height="150"
+          />
 
-                      <!-- 👉 Name -->
-                      <VCol
-                        cols="12"
-                        md="6"
-                      >
-                        <AppTextField
-                          v-model="cardName"
-                          label="Name"
-                          placeholder="John Doe"
-                        />
-                      </VCol>
+          <!-- Error State -->
+          <VAlert
+            v-else-if="paymentMethodsError"
+            type="error"
+            variant="tonal"
+            icon="tabler-alert-circle"
+          >
+            Failed to load payment methods. Please refresh the page.
+          </VAlert>
 
-                      <!-- 👉 Expiry date -->
-                      <VCol
-                        cols="6"
-                        md="3"
-                      >
-                        <AppTextField
-                          v-model="cardExpiryDate"
-                          label="Expiry Date"
-                          placeholder="MM/YY"
-                        />
-                      </VCol>
-
-                      <!-- 👉 Cvv code -->
-                      <VCol
-                        cols="6"
-                        md="3"
-                      >
-                        <AppTextField
-                          v-model="cardCvv"
-                          type="number"
-                          label="CVV Code"
-                          placeholder="123"
-                        />
-                      </VCol>
-
-                      <!-- 👉 Future Billing switch -->
-                      <VCol cols="12">
-                        <VSwitch
-                          v-model="isCardDetailSaveBilling"
-                          density="compact"
-                          label="Save card for future billing?"
-                        />
-                      </VCol>
-                    </VRow>
-                  </VCol>
-                  <VCol
-                    cols="12"
-                    class="d-flex flex-wrap gap-4"
+          <!-- Cards List -->
+          <div v-else-if="paymentMethods.length > 0" class="d-flex flex-column gap-y-6">
+            <VCard
+              v-for="card in paymentMethods"
+              :key="card.id"
+              flat
+              color="rgba(var(--v-theme-on-surface),var(--v-hover-opacity))"
+            >
+              <VCardText class="d-flex flex-sm-row flex-column">
+                <div class="text-no-wrap">
+                  <img
+                    :src="getCardImage(card.brand)"
+                    height="25"
                   >
-                    <VBtn type="submit">
-                      Save changes
-                    </VBtn>
-                    <VBtn
-                      color="secondary"
-                      variant="tonal"
-                      @click="resetPaymentForm"
+                  <h4 class="my-2 text-body-1 text-high-emphasis d-flex align-center">
+                    <div class="me-4 font-weight-medium text-capitalize">
+                      {{ card.brand }}
+                    </div>
+                    <VChip
+                      v-if="card.is_default"
+                      label
+                      color="primary"
+                      size="small"
                     >
-                      Cancel
-                    </VBtn>
-                  </VCol>
-                </VRow>
-              </VCol>
-
-              <!-- 👉 Saved Cards -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <h6 class="text-body-1 text-high-emphasis font-weight-medium mb-6">
-                  My Cards
-                </h6>
-
-                <div class="d-flex flex-column gap-y-6">
-                  <VCard
-                    v-for="card in creditCards"
-                    :key="card.name"
-                    flat
-                    color="rgba(var(--v-theme-on-surface),var(--v-hover-opacity))"
-                  >
-                    <VCardText class="d-flex flex-sm-row flex-column">
-                      <div class="text-no-wrap">
-                        <img
-                          :src="card.image"
-                          height="25"
-                        >
-                        <h4 class="my-2 text-body-1 text-high-emphasis d-flex align-center">
-                          <div class="me-4 font-weight-medium">
-                            {{ card.name }}
-                          </div>
-                          <VChip
-                            v-if="card.isPrimary"
-                            label
-                            color="primary"
-                            size="small"
-                          >
-                            Primary
-                          </VChip>
-                        </h4>
-                        <div class="text-body-1">
-                          **** **** **** {{ card.number.substring(card.number.length - 4) }}
-                        </div>
-                      </div>
-
-                      <VSpacer />
-
-                      <div class="d-flex flex-column text-sm-end">
-                        <div class="d-flex flex-wrap gap-4 order-sm-0 order-1">
-                          <VBtn
-                            variant="tonal"
-                            size="small"
-                            @click="openEditCardDialog(card)"
-                          >
-                            Edit
-                          </VBtn>
-                          <VBtn
-                            color="error"
-                            size="small"
-                            variant="tonal"
-                          >
-                            Delete
-                          </VBtn>
-                        </div>
-                        <span class="text-body-2 my-4 order-sm-1 order-0">Card expires at {{ card.expiry }}</span>
-                      </div>
-                    </VCardText>
-                  </VCard>
+                      Default
+                    </VChip>
+                  </h4>
+                  <div class="text-body-1">
+                    **** **** **** {{ card.last4 }}
+                  </div>
                 </div>
 
-                <!-- 👉 Add Edit Card Dialog -->
-                <CardAddEditDialog
-                  v-model:is-dialog-visible="isCardEditDialogVisible"
-                  :card-details="currentCardDetails"
-                />
-              </VCol>
-            </VRow>
-          </VForm>
+                <VSpacer />
+
+                <div class="d-flex flex-column text-sm-end">
+                  <div class="d-flex flex-wrap gap-4 order-sm-0 order-1">
+                    <VBtn
+                      v-if="!card.is_default"
+                      variant="tonal"
+                      size="small"
+                      @click="setDefaultPaymentMethod(card.id)"
+                    >
+                      Set as Default
+                    </VBtn>
+                    <VBtn
+                      color="error"
+                      size="small"
+                      variant="tonal"
+                      @click="openDeleteCardDialog(card.id)"
+                    >
+                      Delete
+                    </VBtn>
+                  </div>
+                  <span class="text-body-2 my-4 order-sm-1 order-0">
+                    Card expires at {{ card.exp_month }}/{{ card.exp_year }}
+                  </span>
+                </div>
+              </VCardText>
+            </VCard>
+          </div>
+
+          <!-- Empty State -->
+          <VAlert
+            v-else
+            type="info"
+            variant="tonal"
+            icon="tabler-info-circle"
+          >
+            No payment methods found. Add a card to get started!
+          </VAlert>
+
+          <!-- 👉 Add Card Dialog -->
+          <VDialog
+            v-model="isAddCardDialogVisible"
+            max-width="600"
+          >
+            <VCard>
+              <VCardTitle>Add New Payment Method</VCardTitle>
+              <VCardText>
+                <div id="card-element" style="padding: 16px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 16px;"></div>
+              </VCardText>
+              <VCardActions>
+                <VSpacer />
+                <VBtn
+                  color="secondary"
+                  variant="tonal"
+                  @click="isAddCardDialogVisible = false"
+                >
+                  Cancel
+                </VBtn>
+                <VBtn
+                  color="primary"
+                  @click="submitNewCard"
+                  :loading="loadingCard"
+                >
+                  Add Card
+                </VBtn>
+              </VCardActions>
+            </VCard>
+          </VDialog>
+
+
+          <!-- 👉 Delete Card Confirm Dialog -->
+          <VDialog
+            v-model="isDeleteCardDialogVisible"
+            max-width="500"
+          >
+            <VCard class="text-center px-10 py-6">
+              <VCardText>
+                <VBtn
+                  icon
+                  variant="outlined"
+                  color="warning"
+                  class="my-4"
+                  style="block-size: 88px; inline-size: 88px; pointer-events: none;"
+                >
+                  <span class="text-5xl">!</span>
+                </VBtn>
+
+                <h6 class="text-lg font-weight-medium">
+                  Are you sure you want to delete this payment method?
+                </h6>
+              </VCardText>
+
+              <VCardText class="d-flex align-center justify-center gap-2">
+                <VBtn
+                  variant="elevated"
+                  @click="deletePaymentMethod"
+                >
+                  Confirm
+                </VBtn>
+
+                <VBtn
+                  color="secondary"
+                  variant="tonal"
+                  @click="isDeleteCardDialogVisible = false"
+                >
+                  Cancel
+                </VBtn>
+              </VCardText>
+            </VCard>
+          </VDialog>
         </VCardText>
       </VCard>
     </VCol>
@@ -408,83 +630,57 @@ onMounted(() => {
     <VCol cols="12">
       <VCard title="Billing Address">
         <VCardText>
-          <VForm @submit.prevent="() => {}">
+          <p class="text-body-2 text-medium-emphasis mb-6">
+            <span class="d-inline-block me-1">📄</span>
+            Billing Information (for Invoices) - This information will appear on your official receipts.
+          </p>
+          
+          <!-- Loading Skeleton -->
+          <VSkeletonLoader
+            v-if="isLoadingBillingAddress"
+            type="list-item-three-line"
+          />
+
+          <!-- Error State -->
+          <VAlert
+            v-else-if="billingAddressError"
+            type="error"
+            variant="tonal"
+            icon="tabler-alert-circle"
+          >
+            Failed to load billing address. Please refresh the page.
+          </VAlert>
+
+          <!-- Billing Form -->
+          <VForm v-else @submit.prevent="saveBillingAddress">
             <VRow>
-              <!-- 👉 Company name -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppTextField
-                  label="Company Name"
-                  placeholder="Pixinvent"
-                />
-              </VCol>
-
-              <!-- 👉 Billing Email -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppTextField
-                  label="Billing Email"
-                  placeholder="pixinvent@email.com"
-                />
-              </VCol>
-
-              <!-- 👉 Tax ID -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppTextField
-                  label="Tax ID"
-                  placeholder="123 123 1233"
-                />
-              </VCol>
-
-              <!-- 👉 Vat Number -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppTextField
-                  label="VAT Number"
-                  placeholder="121212"
-                />
-              </VCol>
-
-              <!-- 👉 Mobile -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppTextField
-                  dirty
-                  label="Phone Number"
-                  type="number"
-                  prefix="US (+1)"
-                  placeholder="+1 123 456 7890"
-                />
-              </VCol>
-
-              <!-- 👉 Country -->
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppSelect
-                  label="Country"
-                  :items="countryList"
-                  placeholder="Select Country"
-                />
-              </VCol>
-
-              <!-- 👉 Billing Address -->
+              <!-- 👉 Address Line 1 -->
               <VCol cols="12">
                 <AppTextField
-                  label="Billing Address"
-                  placeholder="1234 Main St"
+                  v-model="billingAddress.line1"
+                  label="Address Line 1"
+                  placeholder="123 Main St"
+                />
+              </VCol>
+
+              <!-- 👉 Address Line 2 -->
+              <VCol cols="12">
+                <AppTextField
+                  v-model="billingAddress.line2"
+                  label="Address Line 2 (Optional)"
+                  placeholder="Apt 4B"
+                />
+              </VCol>
+
+              <!-- 👉 City -->
+              <VCol
+                cols="12"
+                md="6"
+              >
+                <AppTextField
+                  v-model="billingAddress.city"
+                  label="City"
+                  placeholder="London"
                 />
               </VCol>
 
@@ -494,20 +690,34 @@ onMounted(() => {
                 md="6"
               >
                 <AppTextField
-                  label="State"
-                  placeholder="New York"
+                  v-model="billingAddress.state"
+                  label="State / Province (Optional)"
+                  placeholder="Greater London"
                 />
               </VCol>
 
-              <!-- 👉 Zip Code -->
+              <!-- 👉 Postal Code -->
               <VCol
                 cols="12"
                 md="6"
               >
                 <AppTextField
-                  label="Zip Code"
-                  type="number"
-                  placeholder="100006"
+                  v-model="billingAddress.postal_code"
+                  label="Postal Code"
+                  placeholder="SW1A 1AA"
+                />
+              </VCol>
+
+              <!-- 👉 Country -->
+              <VCol
+                cols="12"
+                md="6"
+              >
+                <AppSelect
+                  v-model="billingAddress.country"
+                  label="Country"
+                  :items="countryList"
+                  placeholder="Select Country"
                 />
               </VCol>
 
@@ -517,14 +727,15 @@ onMounted(() => {
                 class="d-flex flex-wrap gap-4"
               >
                 <VBtn type="submit">
-                  Save changes
+                  Save Address
                 </VBtn>
                 <VBtn
                   type="reset"
                   color="secondary"
                   variant="tonal"
+                  @click="fetchBillingAddress"
                 >
-                  Discard
+                  Reset
                 </VBtn>
               </VCol>
             </VRow>
@@ -537,6 +748,25 @@ onMounted(() => {
     <VCol cols="12">
       <BillingHistoryTable />
     </VCol>
+
+    <!-- 👉 Snackbar for Notifications -->
+    <VSnackbar
+      v-model="snackbar"
+      :color="snackbarColor"
+      location="top end"
+      :timeout="4000"
+    >
+      {{ snackbarMessage }}
+      <template #actions>
+        <VBtn
+          color="white"
+          variant="text"
+          @click="snackbar = false"
+        >
+          Close
+        </VBtn>
+      </template>
+    </VSnackbar>
   </VRow>
 </template>
 
