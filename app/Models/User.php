@@ -32,6 +32,8 @@ class User extends Authenticatable
         'two_factor_expires_at',
         'email_verified_at',
         'last_activity_at',
+        'pm_type',           // Cashier: Payment method type
+        'pm_last_four',      // Cashier: Payment method last 4 digits
     ];
 
     /**
@@ -139,10 +141,14 @@ class User extends Authenticatable
 
     /**
      * Get the user's subscription (for eager loading).
+     * Always returns the LATEST active subscription to prevent "zombie" subscriptions.
      */
     public function subscription()
     {
-        return $this->hasOne(Subscription::class)->where('type', 'default');
+        return $this->hasOne(Subscription::class)
+            ->where('type', 'default')
+            ->where('stripe_status', 'active')
+            ->latestOfMany();
     }
 
     /**

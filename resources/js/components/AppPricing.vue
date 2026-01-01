@@ -121,12 +121,16 @@ const subscribeToPlan = async (planId) => {
                 snackbarColor.value = 'success'
                 snackbar.value = true
                 
-                // Refresh user data and plans
-                await fetchPlans()
-                loadingPlanId.value = null
+                // Small delay to allow webhook to process and sync payment method
+                setTimeout(async () => {
+                    await fetchPlans()
+                    loadingPlanId.value = null
+                }, 2000) // 2 seconds gives webhook time to complete
             } else if (data.value && data.value.url) {
-                // Keep loading state - user is being redirected
-                // Redirect to Stripe Checkout
+                // Redirect to Stripe Checkout (new subscriber OR fallback for missing payment method)
+                if (data.value.fallback) {
+                    console.log('Redirecting to Stripe Checkout (payment method required)')
+                }
                 window.location.href = data.value.url
             } else if (data.value && data.value.error) {
                 alert(data.value.error)

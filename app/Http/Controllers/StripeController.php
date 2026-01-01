@@ -75,7 +75,60 @@ class StripeController extends Controller
                 ->first();
 
             if ($existingSubscription) {
-                // EXISTING SUBSCRIBER: Use swap to change plan/frequency
+                // EXISTING SUBSCRIBER: Check if they have a payment method in Stripe
+                $hasPaymentMethod = false;
+
+                try {
+                    // Check Stripe directly, not just local DB
+                    if ($user->stripe_id) {
+                        $paymentMethods = $user->paymentMethods();
+                        $hasPaymentMethod = $paymentMethods->isNotEmpty();
+
+                        Log::info('Payment method check', [
+                            'user_id' => $user->id,
+                            'has_payment_method' => $hasPaymentMethod,
+                            'count' => $paymentMethods->count(),
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Could not check payment methods from Stripe', [
+                        'user_id' => $user->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
+                // If no payment method in Stripe, redirect to checkout
+                if (!$hasPaymentMethod) {
+                    Log::warning('Swap blocked - no payment method in Stripe, creating checkout session', [
+                        'user_id' => $user->id,
+                        'plan_id' => $plan->id,
+                        'frequency' => $request->frequency,
+                    ]);
+
+                    // Create checkout session directly (same as new subscriber flow)
+                    $checkout = $user->newSubscription('default', $stripePriceId)
+                        ->withMetadata([
+                            'plan_id' => $plan->id,
+                            'user_id' => $user->id,
+                            'frequency' => $request->frequency,
+                        ])
+                        ->checkout([
+                            'success_url' => url('/?payment=success'),
+                            'cancel_url' => url('/pages/pricing?payment=cancelled'),
+                            'metadata' => [
+                                'user_id' => $user->id,
+                                'plan_id' => $plan->id,
+                                'frequency' => $request->frequency,
+                            ],
+                        ]);
+
+                    return response()->json([
+                        'url' => $checkout->url,
+                        'fallback' => true, // Indicate this was a fallback
+                    ]);
+                }
+
+                // Payment method exists - proceed with swap
                 Log::info('Existing subscriber detected - using swap', [
                     'user_id' => $user->id,
                     'current_price' => $existingSubscription->stripe_price,
@@ -110,7 +163,34 @@ class StripeController extends Controller
                     'plan_id' => $plan->id,
                 ]);
 
+                // Ensure user has a Stripe customer ID
+                if (!$user->stripe_id) {
+                    try {
+                        $user->createOrGetStripeCustomer();
+                        $user->refresh();
+
+                        Log::info('Stripe customer created', [
+                            'user_id' => $user->id,
+                            'stripe_id' => $user->stripe_id,
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::error('Failed to create Stripe customer', [
+                            'user_id' => $user->id,
+                            'error' => $e->getMessage(),
+                        ]);
+
+                        return response()->json([
+                            'error' => 'Failed to create Stripe customer. Please try again.',
+                        ], 500);
+                    }
+                }
+
                 $checkout = $user->newSubscription('default', $stripePriceId)
+                    ->withMetadata([
+                        'plan_id' => $plan->id,
+                        'user_id' => $user->id,
+                        'frequency' => $request->frequency,
+                    ])
                     ->checkout([
                         'success_url' => url('/?payment=success'),
                         'cancel_url' => url('/pages/pricing?payment=cancelled'),

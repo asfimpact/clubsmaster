@@ -1,3 +1,5 @@
+
+
 #### [2025-12-31] - Subscription Management Enhancements, Frequency-Aware UI & Instant Upgrades
 ## 🐛 Bug Fixes
 - **webhookcontroller.php**
@@ -100,7 +102,7 @@
 - Logs show swap vs new subscription path
 - Console logs for frequency-aware logic (temporary, removed after testing)
 **Commit**
-- [pending] - "Subscription Management Enhancements, Frequency-Aware UI & Instant Upgrades"
+- [c3aae3d] - "Subscription Management Enhancements, Frequency-Aware UI & Instant Upgrades"
 
 #### [2025-12-30] - Stripe Checkout , Free Plan Integration & logic
 - **Stripe Checkout Integration**
@@ -156,7 +158,7 @@
 - `resources/js/pages/AppPricing.vue`
 - `resources/js/composables/useApi.js`
 **Commit Message**
-[pending] - Stripe Checkout , Free Plan Integration & logic
+[ccaa9e7] - Stripe Checkout , Free Plan Integration & logic
 
 #### [29-12-2025] - Profile and account settins changes, Plan management and Subscription Management System implementation and enhancements for future integration with other systems.
 ## 📊 Added Database
