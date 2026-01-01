@@ -1,3 +1,37 @@
+#### [2026-01-01] - Add fallback for default payment method, configure Stripe webhooks, and improve billing page error handling.
+- **StripeController.php**
+- Added fallback logic in listPaymentMethods() to automatically use the first card as the default payment method when Stripe has no default payment method set.
+- Ensures the "Set as Default" button does not appear for all cards if no default is set.
+- **services.php**
+- Added Stripe configuration for Laravel Cashier to integrate Stripe webhooks properly.
+- Configured Stripe webhook secret, tolerance, and other relevant settings using environment variables.
+- **AccountSettingsBillingAndPlans.vue**
+- Added null key check before loading Stripe and added error snackbar if the Stripe key (VITE_STRIPE_KEY) is missing.
+- Configured Stripe Elements with hidePostalCode: true for a cleaner user interface.
+- Ensured the "Add Card" button is only enabled once Stripe is properly loaded using :disabled="!stripeInstance".
+- Added an initializeStripeElements() call on page load to ensure proper Stripe initialization.
+- Updated payment method deletion logic to use fetch instead of useApi and ensured correct authentication using useCookie('accessToken').
+- **StripeController.php**
+- Removed unnecessary debug logging:
+- Log::info('Delete Payment Method Attempt')
+- Log::warning('Delete blocked - last payment method')
+- Log::info('Default Payment Method Check')
+- Log::info('No default PM in Stripe, using first card')
+- **AccountSettingsBillingAndPlans.vue**
+- Removed redundant console.log statements, specifically console.log('🔍 Payment Methods Data:').
+- **Fixed**
+- Fixed a catch-22 where the "Add Card" button was permanently disabled by ensuring it’s only enabled when Stripe is fully loaded.
+-**Configuration**
+- services.php
+- Updated Stripe configuration for Laravel Cashier, ensuring webhooks work seamlessly with the defined tolerance of 5 minutes (300 seconds).
+**Files Modified**
+- services.php
+- StripeController.php
+- AccountSettingsBillingAndPlans.vue
+**Commit Message**
+- Add fallback for default payment method, configure Stripe webhooks, and improve billing page error handling.
+
+
 #### [2026-01-01] - Payment Method & Billing Address Management Implementation
 - **Payment Methods Management:**
   - List all payment methods with brand, last4, expiry date, and default badge
@@ -32,9 +66,8 @@
   - Added `isLoadingPaymentMethods` and `isLoadingBillingAddress` refs (initialized as `true`)
   - Wrapped fetch functions with `finally` blocks to ensure loading state always resets
   - Eliminated UI flicker on page load
-
 ## 🔧 Technical Improvements
-- **Backend ([StripeController.php](app/Http/Controllers/StripeController.php)):**
+- **Backend ([StripeController.php]):**
   - Added [listPaymentMethods()] - Returns mapped payment method details from Stripe
   - Added [createSetupIntent()] - Returns client_secret for adding new cards
   - Added [setDefaultPaymentMethod()] - Sets default and syncs `pm_type`/`pm_last_four` to users table
@@ -46,7 +79,7 @@
   - Created [BillingAddress](app/Http/Controllers/StripeController.php model with fillable fields and user relationship
   - Created `billing_addresses` table migration with unique constraint on user_id
   - Added `billingAddress()` hasOne relationship to User model
-- **Frontend ([AccountSettingsBillingAndPlans.vue](resources/js/views/pages/account-settings/AccountSettingsBillingAndPlans.vue)):
+- **Frontend ([AccountSettingsBillingAndPlans.vue]
   - Installed `@stripe/stripe-js` package (v8.6.0) via pnpm
   - Integrated Stripe Elements for card input with proper mounting via `nextTick()`
   - Replaced hardcoded payment methods with live API data

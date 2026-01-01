@@ -209,9 +209,26 @@ const openAddCardDialog = async () => {
 
 // Initialize Stripe Elements
 const initializeStripeElements = async () => {
+  const key = import.meta.env.VITE_STRIPE_KEY
+  
+  // Check if Stripe key is configured
+  if (!key) {
+    console.error('STRIPE ERROR: VITE_STRIPE_KEY is missing from .env file')
+    snackbarMessage.value = 'Payment system configuration error. Please contact support.'
+    snackbarColor.value = 'error'
+    snackbar.value = true
+    isAddCardDialogVisible.value = false
+    return
+  }
+  
   try {
-    // Load Stripe (use your publishable key)
-    const stripe = await loadStripe(import.meta.env.VITE_STRIPE_KEY || 'pk_test_...')
+    // Load Stripe with the configured key
+    const stripe = await loadStripe(key)
+    
+    if (!stripe) {
+      throw new Error('Failed to load Stripe')
+    }
+    
     stripeInstance.value = stripe
     
     const elements = stripe.elements()
@@ -239,6 +256,10 @@ const initializeStripeElements = async () => {
     }
   } catch (e) {
     console.error('Failed to initialize Stripe Elements', e)
+    snackbarMessage.value = 'Payment system is initializing, please wait...'
+    snackbarColor.value = 'warning'
+    snackbar.value = true
+    isAddCardDialogVisible.value = false
   }
 }
 
@@ -316,6 +337,7 @@ onMounted(() => {
     fetchBilling()
     fetchPaymentMethods()
     fetchBillingAddress()
+    initializeStripeElements() // Initialize Stripe on page load
 })
 </script>
 
@@ -457,6 +479,7 @@ onMounted(() => {
             </h6>
             <VBtn
               size="small"
+              :disabled="!stripeInstance"
               @click="openAddCardDialog"
             >
               Add New Card

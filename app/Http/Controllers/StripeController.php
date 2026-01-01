@@ -228,14 +228,39 @@ class StripeController extends Controller
     {
         $user = $request->user();
 
-        $paymentMethods = $user->paymentMethods()->map(function ($pm) use ($user) {
+        // Get all payment methods first
+        $allPaymentMethods = $user->paymentMethods();
+
+        // Get the default payment method ID from Stripe
+        $defaultPmId = null;
+        try {
+            $defaultPm = $user->defaultPaymentMethod();
+            $defaultPmId = $defaultPm ? $defaultPm->id : null;
+
+            // If no default is set in Stripe, use the first payment method
+            if (!$defaultPmId && $allPaymentMethods->isNotEmpty()) {
+                $defaultPmId = $allPaymentMethods->first()->id;
+            }
+        } catch (\Exception $e) {
+            Log::warning('Could not fetch default payment method', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage()
+            ]);
+
+            // Fallback to first card on error
+            if ($allPaymentMethods->isNotEmpty()) {
+                $defaultPmId = $allPaymentMethods->first()->id;
+            }
+        }
+
+        $paymentMethods = $allPaymentMethods->map(function ($pm) use ($defaultPmId) {
             return [
                 'id' => $pm->id,
                 'brand' => $pm->card->brand,
                 'last4' => $pm->card->last4,
                 'exp_month' => $pm->card->exp_month,
                 'exp_year' => $pm->card->exp_year,
-                'is_default' => $pm->id === $user->defaultPaymentMethod()?->id,
+                'is_default' => $pm->id === $defaultPmId,
             ];
         });
 
@@ -320,20 +345,8 @@ class StripeController extends Controller
 
         $paymentMethodsCount = $user->paymentMethods()->count();
 
-        // DEBUG: Trace this
-        Log::info("Delete Payment Method Attempt", [
-            'user_id' => $user->id,
-            'active_subs_count' => $activeSubCount,
-            'payment_methods_count' => $paymentMethodsCount,
-            'pm_id' => $pmId
-        ]);
-
         if ($activeSubCount > 0) {
             if ($paymentMethodsCount <= 1) {
-                Log::warning("Delete blocked - last payment method", [
-                    'user_id' => $user->id,
-                    'pm_id' => $pmId
-                ]);
 
                 return response()->json([
                     'error' => 'Cannot delete your only payment method while subscription is active.',
