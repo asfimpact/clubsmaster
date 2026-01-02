@@ -63,6 +63,17 @@ const snackbar = ref(false)
 const snackbarMessage = ref('')
 const snackbarColor = ref('success')
 
+// Check if user has ever used free trial
+const hasUsedFreeTrial = computed(() => {
+  const value = userData.value?.has_used_free_trial || false
+  console.log('🔍 Free trial check:', { 
+    userData: userData.value, 
+    has_used_free_trial: userData.value?.has_used_free_trial,
+    computed: value 
+  })
+  return value
+})
+
 const subscribeToPlan = async (planId) => {
     // Prevent double-clicks
     if (loadingPlanId.value) return
@@ -74,8 +85,10 @@ const subscribeToPlan = async (planId) => {
         const selectedPlan = pricingPlans.value.find(p => p.id === planId)
         
         // Check if this is a free plan (price = 0)
-        const isFree = (frequency === 'yearly' && selectedPlan.yearlyPrice === 0) || 
-                       (frequency === 'monthly' && selectedPlan.monthlyPrice === 0)
+        const price = frequency === 'yearly' ? selectedPlan.yearlyPrice : selectedPlan.monthlyPrice
+        const isFree = price == 0 || price === null || price === '0'
+        
+        console.log('Plan check:', { planId, frequency, price, isFree, selectedPlan })
         
         if (isFree) {
             // Free tier: Show confirmation modal
@@ -125,7 +138,7 @@ const subscribeToPlan = async (planId) => {
                 setTimeout(async () => {
                     await fetchPlans()
                     loadingPlanId.value = null
-                }, 2000) // 2 seconds gives webhook time to complete
+                }, 3000) // 3 seconds gives webhook time to complete
             } else if (data.value && data.value.url) {
                 // Redirect to Stripe Checkout (new subscriber OR fallback for missing payment method)
                 if (data.value.fallback) {
@@ -243,7 +256,24 @@ const isPlanCurrent = (planId) => {
            userData.value?.current_subscription_frequency === currentToggleFreq
 }
 
+// Fetch fresh user data
+const fetchUser = async () => {
+  try {
+    const { data } = await useApi('/user')
+    if (data.value) {
+      userData.value = data.value
+      console.log('✅ User data updated:', {
+        has_used_free_trial: data.value.has_used_free_trial,
+        userData: userData.value
+      })
+    }
+  } catch (e) {
+    console.error('Failed to fetch user data', e)
+  }
+}
+
 onMounted(() => {
+    fetchUser()  // Fetch fresh user data first
     fetchPlans()
 })
 </script>
@@ -395,15 +425,18 @@ onMounted(() => {
           <!-- 👉 Plan actions -->
           <VBtn
             block
-            :color="isPlanCurrent(plan.id) ? 'success' : 'primary'"
+            :color="isPlanCurrent(plan.id) ? 'success' : (plan.monthlyPrice == 0 && hasUsedFreeTrial ? 'grey' : 'primary')"
             :variant="plan.isPopular ? 'elevated' : 'tonal'"
             :active="false"
-            :disabled="isPlanCurrent(plan.id) || loadingPlanId === plan.id"
+            :disabled="isPlanCurrent(plan.id) || loadingPlanId === plan.id || (plan.monthlyPrice == 0 && hasUsedFreeTrial)"
             :loading="loadingPlanId === plan.id"
             @click="!isPlanCurrent(plan.id) && subscribeToPlan(plan.id)"
           >
             <template v-if="loadingPlanId === plan.id">
               Redirecting to Checkout...
+            </template>
+            <template v-else-if="plan.monthlyPrice == 0 && hasUsedFreeTrial">
+              Trial Used - Upgrade Required
             </template>
             <template v-else>
               {{ isPlanCurrent(plan.id) ? 'Your Current Plan' : 'Select Plan' }}

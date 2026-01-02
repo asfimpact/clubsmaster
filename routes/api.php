@@ -5,7 +5,19 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/user', function (Request $request) {
-    return $request->user()->load('subscription.plan');
+    $user = $request->user()->load('subscription.plan');
+
+    // Add flag to check if user has ever used free trial
+    // Use direct DB query to check entire history
+    $hasUsedTrial = \App\Models\Subscription::where('user_id', $user->id)
+        ->where('stripe_status', 'free')
+        ->exists();
+
+    \Log::info('API /user called', ['user_id' => $user->id, 'has_used_free_trial' => $hasUsedTrial]);
+
+    $user->has_used_free_trial = $hasUsedTrial;
+
+    return $user;
 })->middleware('auth:sanctum');
 
 // User Billing & Plans

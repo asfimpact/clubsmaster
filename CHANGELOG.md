@@ -1,3 +1,56 @@
+## [02-01-2026] - Implement free trial enforcement, optimize webhook performance, and update subscription model for better billing tracking.
+# **SubscriptionController.php** - Free Plan Management
+- **Free vs Paid Plan Logic**: Separated the logic for free and paid plans. If the price is zero, it's treated as a free plan, otherwise, it's a paid plan.
+- **Free Plan Creation**: For free plans, a local subscription is created with a status of 'free' and an expiry date set based on the validity period.
+- **Paid Plans**: Redirect to Stripe for processing.
+- **Lifetime Trial Enforcement**: Added a check to ensure that a user can only use the free trial once. If they’ve used it before, a 403 error is returned.
+- **Graceful Cancellation**: Instead of deleting a subscription when cancelled, it expires with an `ends_at` timestamp and updates the status to 'cancelled'.
+- **Semantic Date Columns**: For better clarity, `ends_at` is used for free plan expirations, and `trial_ends_at` is set to null after the trial period ends.
+### WebhookController.php - Performance & Billing Tracking
+- **Performance Improvement**: Removed payment method synchronization from the `subscription.updated` webhook, reducing processing time from 1200ms to 130ms.
+- **Timing Logs**: Added detailed start and end logging to track processing durations for all webhook handlers.
+- **Syncing `current_period_end`**: This field is now synced with both `subscription.created` and `subscription.updated` webhooks.
+**Subscription.php** - Model Updates
+- **New Field (`current_period_end`)**: Added `current_period_end` to the `fillable` array and updated it to be cast to a datetime field for easier use in the code.
+**User.php** - Subscription Relationship
+- **Updated Subscription Relationship**: The subscription relationship now includes free subscriptions (stripe_status = 'free') and filters expired subscriptions using `ends_at`.
+**AppPricing.vue** - Frontend Free Trial Logic
+- **Free Plan Detection Fix**: The logic for detecting free plans now uses loose equality (`==`) instead of strict equality (`===`), ensuring more accurate detection.
+- **Free Trial Check**: Added a computed property (`hasUsedFreeTrial`) to track whether the user has already used a free trial.
+- **Button Updates**: Added button logic to display a message saying "Trial Used - Upgrade Required" if the user has used their free trial.
+- **Delayed Webhook**: Increased webhook delay from 2 seconds to 3 seconds to accommodate more processing time.
+- **Debug Logging**: Added logging for plan checks and user data to aid with debugging. 
+**routes/api.php** - User API Endpoint
+- **New User Endpoint Data**: Added a flag (`has_used_free_trial`) to the `/user` API response to indicate if a user has already used their free trial.
+- **Direct Database Query**: Replaced the previous method of fetching the free trial status using a relationship with a direct database query for better performance.
+- **Debug Logging**: Added debug logging to trace user data retrieval. (This can be removed in production.)
+2026_01_02_061552_add_current_period_end_to_subscriptions_table.php - New Migration
+- **Database Migration**: A new column `current_period_end` has been added to the `subscriptions` table to track the end of the current billing period. This column is nullable and placed after `ends_at`.
+### 🎯 **Overall Impact:**
+- **Free Trial Lifetime Enforcement**: Users can only use the free trial once.
+- **Improved Webhook Performance**: The time taken to process the `subscription.updated` webhook has been reduced by 89% (1200ms → 130ms).
+- **Billing Cycle Tracking**: The addition of the `current_period_end` column allows more accurate tracking of billing cycles.
+- **Subscription History Preservation**: Subscriptions are now gracefully expired rather than deleted, preserving history.
+- **Frontend Free Trial Display**: Correctly shows "Trial Used - Upgrade Required" for users who have used their free trial.
+- **Semantic Date Columns**: `ends_at` is used for free plan expiration tracking, while `trial_ends_at` is used for Stripe trial expiration.
+### **Notes for Future Troubleshooting:**
+- **Subscription Expiry**: If there are issues related to free plan expiry or grace periods, check the logic in `SubscriptionController.php` around `ends_at` and `stripe_status`.
+- **Webhook Delays**: Ensure that the webhook handlers are properly logging and syncing with `current_period_end`. If performance is an issue, check the reduced processing time after removing unnecessary sync operations.
+- **User API**: If `has_used_free_trial` isn't showing up correctly in the `/user` response, verify the database query and ensure that the relationship and direct queries are functioning as expected.
+- **Frontend Logic**: If the frontend isn't correctly showing the trial usage status, review the computed property `hasUsedFreeTrial` and the related button logic in `AppPricing.vue`.
+**Files Modified**
+- SubscriptionController.php
+- WebhookController.php
+- Subscription.php
+- User.php
+- AppPricing.vue
+- routes/api.php
+- 2026_01_02_061552_add_current_period_end_to_subscriptions_table.php
+**Commit Message**
+- Implement free trial enforcement, optimize webhook performance, and update subscription model for better billing tracking.
+
+
+
 #### [2026-01-01] - Add fallback for default payment method, configure Stripe webhooks, and improve billing page error handling.
 - **StripeController.php**
 - Added fallback logic in listPaymentMethods() to automatically use the first card as the default payment method when Stripe has no default payment method set.

@@ -147,7 +147,11 @@ class User extends Authenticatable
     {
         return $this->hasOne(Subscription::class)
             ->where('type', 'default')
-            ->where('stripe_status', 'active')
+            ->whereIn('stripe_status', ['active', 'free'])
+            ->where(function ($query) {
+                $query->whereNull('ends_at')
+                    ->orWhere('ends_at', '>', now());
+            })
             ->latestOfMany();
     }
 

@@ -14,6 +14,9 @@ class WebhookController extends CashierController
      */
     protected function handleCustomerSubscriptionCreated(array $payload)
     {
+        $startTime = microtime(true);
+        Log::info('🕐 Webhook START: customer.subscription.created', ['time' => $startTime]);
+
         // 1. Let Cashier do its default work first (creates the subscription in DB)
         $response = parent::handleCustomerSubscriptionCreated($payload);
 
@@ -83,9 +86,25 @@ class WebhookController extends CashierController
             } else {
                 Log::warning("Webhook Warning: No plan_id metadata found for Subscription {$stripeId}");
             }
+
+            // Sync current_period_end for billing cycle tracking
+            if (isset($data['current_period_end']) && is_numeric($data['current_period_end'])) {
+                Subscription::where('stripe_id', $stripeId)->update([
+                    'current_period_end' => \Carbon\Carbon::createFromTimestamp($data['current_period_end']),
+                ]);
+            }
         } catch (\Exception $e) {
-            Log::error("Webhook Metadata Sync Failed: " . $e->getMessage());
+            Log::error('Failed to sync plan_id on subscription created', [
+                'error' => $e->getMessage(),
+                'stripe_subscription_id' => $stripeId ?? 'unknown'
+            ]);
         }
+
+        $endTime = microtime(true);
+        Log::info('✅ Webhook END: customer.subscription.created', [
+            'time' => $endTime,
+            'duration' => round(($endTime - $startTime) * 1000, 2) . 'ms'
+        ]);
 
         return $response;
     }
@@ -95,6 +114,8 @@ class WebhookController extends CashierController
      */
     protected function handleCustomerSubscriptionUpdated(array $payload)
     {
+        $startTime = microtime(true);
+        Log::info('🕐 Webhook START: customer.subscription.updated', ['time' => $startTime]);
         // 1. Let Cashier update the subscription status/dates
         $response = parent::handleCustomerSubscriptionUpdated($payload);
 
@@ -108,42 +129,23 @@ class WebhookController extends CashierController
                     'plan_id' => $planId
                 ]);
                 Log::info("Webhook Update: Synced plan_id {$planId} for Subscription {$stripeId}");
+            }
 
-                // Also sync payment method when subscription is updated
-                $subscription = Subscription::where('stripe_id', $stripeId)->first();
-                if ($subscription && $subscription->user) {
-                    try {
-                        $user = $subscription->user;
-
-                        if ($user->stripe_id) {
-                            $paymentMethods = $user->paymentMethods();
-
-                            if ($paymentMethods->isNotEmpty()) {
-                                $defaultPM = $paymentMethods->first();
-
-                                $user->update([
-                                    'pm_type' => $defaultPM->card->brand ?? 'card',
-                                    'pm_last_four' => $defaultPM->card->last4 ?? null,
-                                ]);
-
-                                Log::info("Webhook Update: Payment method synced", [
-                                    'user_id' => $user->id,
-                                    'pm_type' => $defaultPM->card->brand,
-                                    'pm_last_four' => $defaultPM->card->last4,
-                                ]);
-                            }
-                        }
-                    } catch (\Exception $e) {
-                        Log::warning("Webhook Update: Could not sync payment method", [
-                            'user_id' => $subscription->user_id,
-                            'error' => $e->getMessage(),
-                        ]);
-                    }
-                }
+            // Sync current_period_end for billing cycle tracking
+            if (isset($data['current_period_end']) && is_numeric($data['current_period_end'])) {
+                Subscription::where('stripe_id', $stripeId)->update([
+                    'current_period_end' => \Carbon\Carbon::createFromTimestamp($data['current_period_end']),
+                ]);
             }
         } catch (\Exception $e) {
             Log::error("Webhook Update Sync Failed: " . $e->getMessage());
         }
+
+        $endTime = microtime(true);
+        Log::info('✅ Webhook END: customer.subscription.updated', [
+            'time' => $endTime,
+            'duration' => round(($endTime - $startTime) * 1000, 2) . 'ms'
+        ]);
 
         return $response;
     }
@@ -154,6 +156,9 @@ class WebhookController extends CashierController
      */
     protected function handleCheckoutSessionCompleted(array $payload)
     {
+        $startTime = microtime(true);
+        Log::info('🕐 Webhook START: checkout.session.completed', ['time' => $startTime]);
+
         $session = $payload['data']['object'];
         $planId = $session['metadata']['plan_id'] ?? null;
         $subscriptionId = $session['subscription'] ?? null;
@@ -207,6 +212,12 @@ class WebhookController extends CashierController
         }
 
         // Cashier doesn't have a parent method for this event, so we just return success
+        $endTime = microtime(true);
+        Log::info('✅ Webhook END: checkout.session.completed', [
+            'time' => $endTime,
+            'duration' => round(($endTime - $startTime) * 1000, 2) . 'ms'
+        ]);
+
         return response()->json(['status' => 'success']);
     }
 
