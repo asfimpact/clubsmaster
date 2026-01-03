@@ -22,6 +22,8 @@ Route::get('/user', function (Request $request) {
 Route::middleware('auth:sanctum')->get('/user/billing', [\App\Http\Controllers\User\BillingController::class, 'index']);
 Route::middleware('auth:sanctum')->get('/user/plans', [\App\Http\Controllers\User\PlanController::class, 'index']);
 Route::middleware('auth:sanctum')->post('/user/subscribe', [\App\Http\Controllers\User\SubscriptionController::class, 'subscribe']);
+Route::middleware('auth:sanctum')->post('/user/subscription/cancel', [\App\Http\Controllers\User\SubscriptionController::class, 'cancel']);
+Route::middleware('auth:sanctum')->post('/user/subscription/resume', [\App\Http\Controllers\User\SubscriptionController::class, 'resume']);
 
 // Stripe Checkout
 Route::middleware('auth:sanctum')->post('/stripe/checkout', [\App\Http\Controllers\StripeController::class, 'checkout']);

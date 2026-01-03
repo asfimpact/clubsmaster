@@ -7,6 +7,7 @@ import { loadStripe } from '@stripe/stripe-js'
 const selectedPaymentMethod = ref('credit-debit-atm-card')
 const isPricingPlanDialogVisible = ref(false)
 const isConfirmDialogVisible = ref(false)
+const isResumeDialogVisible = ref(false)
 const isAddCardDialogVisible = ref(false)
 const isDeleteCardDialogVisible = ref(false)
 const cardToDelete = ref(null)
@@ -78,7 +79,7 @@ const planDetails = computed(() => {
   return {
     plan_name: summary.plan_name,
     plan_price: numericPrice,
-    status: summary.status.toLowerCase().includes('active') ? 'active' : 'inactive',
+    status: summary.status.toLowerCase().includes('cancelling') ? 'cancelling' : (summary.status.toLowerCase().includes('active') ? 'active' : 'inactive'),
     active_until: summary.expiry_date,
     currency: '£',
     days_remaining: summary.days_remaining || 0,
@@ -342,6 +343,62 @@ const getCardImage = (brand) => {
   return brandMap[brand?.toLowerCase()] || mastercard
 }
 
+// Cancel Subscription
+const cancelSubscription = async (isConfirmed) => {
+  if (!isConfirmed) return
+  
+  try {
+    const { data, error } = await useApi('/user/subscription/cancel', { method: 'POST' })
+    
+    if (error.value) {
+      throw new Error(error.value.message || 'Failed to cancel subscription')
+    }
+
+    if (data.value && data.value.user) {
+      userData.value = data.value.user // Update global state
+      // Add snackbar notification (in addition to dialog message)
+      snackbarMessage.value = data.value.message || 'Subscription cancelled successfully'
+      snackbarColor.value = 'success'
+      snackbar.value = true
+    }
+  } catch (e) {
+    console.error('Cancellation error:', e)
+    snackbarMessage.value = e.message || 'An error occurred'
+    snackbarColor.value = 'error'
+    snackbar.value = true
+  }
+}
+
+// Resume Subscription
+const isResuming = ref(false)
+const resumeSubscription = async (isConfirmed) => {
+  if (!isConfirmed) return
+  
+  isResuming.value = true
+  
+  try {
+    const { data, error } = await useApi('/user/subscription/resume', { method: 'POST' })
+    
+    if (error.value) {
+      throw new Error(error.value.message || 'Failed to resume subscription')
+    }
+
+    if (data.value && data.value.user) {
+      userData.value = data.value.user // Update global state
+      snackbarMessage.value = data.value.message
+      snackbarColor.value = 'success'
+      snackbar.value = true
+    }
+  } catch (e) {
+    console.error('Resume error:', e)
+    snackbarMessage.value = e.message || 'Failed to resume'
+    snackbarColor.value = 'error'
+    snackbar.value = true
+  } finally {
+    isResuming.value = false
+  }
+}
+
 onMounted(() => {
     fetchPaymentMethods()
     fetchBillingAddress()
@@ -447,10 +504,20 @@ onMounted(() => {
             <VCol cols="12">
               <div class="d-flex flex-wrap gap-4">
                 <VBtn @click="isPricingPlanDialogVisible = true">
-                  upgrade plan
+                  {{ planDetails.status === 'cancelling' ? 'Subscribe / Change Plan' : 'Upgrade Plan' }}
                 </VBtn>
 
                 <VBtn
+                  v-if="planDetails.status === 'cancelling'"
+                  color="primary"
+                  variant="tonal"
+                  @click="isResumeDialogVisible = true"
+                >
+                  Resume Subscription
+                </VBtn>
+
+                <VBtn
+                  v-else-if="planDetails.status === 'active'"
                   color="error"
                   variant="tonal"
                   @click="isConfirmDialogVisible = true"
@@ -469,6 +536,18 @@ onMounted(() => {
             cancel-title="Cancelled"
             confirm-msg="Your subscription cancelled successfully."
             confirm-title="Unsubscribed!"
+            @confirm="cancelSubscription"
+          />
+
+          <!-- 👉 Resume Dialog -->
+          <ConfirmDialog
+            v-model:is-dialog-visible="isResumeDialogVisible"
+            confirmation-question="Resume your subscription? Auto-renewal will be reactivated and you'll be charged on your next billing date."
+            cancel-msg="Resume cancelled"
+            cancel-title="Cancelled"
+            confirm-msg="Subscription resumed successfully! Auto-renewal is active."
+            confirm-title="Resumed!"
+            @confirm="resumeSubscription"
           />
 
           <!-- 👉 plan and pricing dialog -->

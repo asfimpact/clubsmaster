@@ -200,8 +200,22 @@ class User extends Authenticatable
                 ? $subscription->ends_at->format('M d, Y')
                 : 'N/A';
             $price = 'Free';
+        } elseif ($subscription->onGracePeriod()) {
+            // Canceled but still in grace period (Cashier Native Method)
+            // CHECK THIS BEFORE 'active' because Stripe keeps status='active' during grace period
+            $status = 'Active (Cancelling)';
+            $expiryDate = $subscription->ends_at ? $subscription->ends_at->format('M d, Y') : 'N/A';
+
+            // Keep showing price during grace period
+            if ($subscription->stripe_price && str_contains($subscription->stripe_price, 'year')) {
+                $price = $plan ? '£' . $plan->yearly_price : 'N/A';
+                $billingCycle = 'yearly';
+            } else {
+                $price = $plan ? '£' . $plan->price : 'N/A';
+                $billingCycle = 'monthly';
+            }
         } elseif ($subscription->stripe_status === 'active') {
-            // Active paid subscription
+            // Active paid subscription (Recurring)
             $status = 'Active';
 
             // Waterfall of Truth: Check current_period_end, then trial_ends_at, then ends_at
@@ -215,19 +229,6 @@ class User extends Authenticatable
 
             // Determine price and billing cycle from plan
             // Check metadata or stripe_price to determine frequency
-            if ($subscription->stripe_price && str_contains($subscription->stripe_price, 'year')) {
-                $price = $plan ? '£' . $plan->yearly_price : 'N/A';
-                $billingCycle = 'yearly';
-            } else {
-                $price = $plan ? '£' . $plan->price : 'N/A';
-                $billingCycle = 'monthly';
-            }
-        } elseif ($subscription->onGracePeriod()) {
-            // Canceled but still in grace period (Cashier Native Method)
-            $status = 'Active (Cancelling)';
-            $expiryDate = $subscription->ends_at ? $subscription->ends_at->format('M d, Y') : 'N/A';
-
-            // Keep showing price during grace period
             if ($subscription->stripe_price && str_contains($subscription->stripe_price, 'year')) {
                 $price = $plan ? '£' . $plan->yearly_price : 'N/A';
                 $billingCycle = 'yearly';

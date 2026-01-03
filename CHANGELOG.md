@@ -1,3 +1,77 @@
+#### [03-01-2026] feat: implement subscription cancellation and resumption with confirmation dialogs
+# 🎯 Task Completed: Subscription Cancellation & Resumption Flow
+# Features Implemented
+1. **Cancel Subscription** - Users can cancel their subscription at the end of the current billing period without losing immediate access
+2. **Resume Subscription** - Users can reactivate a cancelled subscription during the grace period
+3. **Dual Confirmation UX** - Both actions require user confirmation via modal dialogs
+4. **Dual Feedback System** - Success notifications appear in both center dialog and top-right snackbar
+5. **Dynamic Expiry Messaging** - Cancellation toast message includes specific expiry date (e.g., "Access until Jan 10, 2026")
+**`routes/api.php`:**
+- `POST /user/subscription/cancel` - Cancel subscription at period end
+- `POST /user/subscription/resume` - Resume cancelled subscription
+- Purpose: Expose cancellation and resumption endpoints to authenticated users
+**`app/Http/Controllers/User/SubscriptionController.php`:**
+**New Methods:**
+1. **`cancel(Request $request)`**
+   - Validates user has active subscription
+   - Calls Cashier's `cancel()` for Stripe subscriptions (sets `cancel_at_period_end`)
+   - Handles local/free subscriptions by updating status to 'canceled'
+   - Returns dynamic message with specific expiry date
+   - Includes comprehensive logging for debugging
+2. **`resume(Request $request)`**
+   - Validates subscription is in grace period using `onGracePeriod()`
+   - Calls Cashier's `resume()` to reactivate Stripe subscription
+   - Handles local/free subscription resumption
+   - Returns success message with updated user data
+   - Includes comprehensive logging
+**Bug Fixes:**
+- Fixed "Undefined property: HasOne::$id" error by changing `$user->subscription('default')` to `$user->subscription()->first()`
+- Added graceful fallback for null `ends_at` dates
+**`app/Models/User.php`:**
+**Updated `getSubscriptionSummaryAttribute()`:**
+- **Reordered Status Checks:** Now checks `onGracePeriod()` BEFORE checking `stripe_status === 'active'`
+- **Why:** Stripe keeps status as "active" during grace period; `onGracePeriod()` correctly identifies "Active (Cancelling)" state
+- **Result:** UI now properly detects cancelled-but-active subscriptions and shows "Resume" button
+**Status Logic Flow:**
+1. Check if `stripe_status === 'free'` → "Active (Free)"
+2. Check if `onGracePeriod()` → "Active (Cancelling)" ✅ (NEW PRIORITY)
+3. Check if `stripe_status === 'active'` → "Active"
+4. Else → "Inactive"
+**`resources/js/views/pages/account-settings/AccountSettingsBillingAndPlans.vue`**
+**New Refs:**
+- `isResumeDialogVisible` - Controls Resume confirmation dialog
+**New/Updated Methods:**
+- 1. **`cancelSubscription(isConfirmed)`**
+   - Accepts confirmation parameter
+   - Calls `/user/subscription/cancel` API
+   - Updates global `userData` state
+   - Shows snackbar notification with dynamic expiry date
+   - Handles errors gracefully
+- 2. **`resumeSubscription(isConfirmed)`** - same as cancelSubscription
+**UI Updates:**
+- 1. **Status Detection Fix:**
+   - Updated `planDetails` computed property to detect 'cancelling' status
+   - Changed from: `status: summary.status.toLowerCase().includes('active') ? 'active' : 'inactive'`
+   - Changed to: `status: summary.status.toLowerCase().includes('cancelling') ? 'cancelling' : (active check)`
+- 2. **Conditional Buttons:**
+   - **Cancel Button:** Shows when `planDetails.status === 'active'`
+   - **Resume Button:** Shows when `planDetails.status === 'cancelling'`
+   - **Upgrade Plan Button:** Text changes to "Subscribe / Change Plan" when cancelling
+- 3. - **Cancel Dialog:**
+     - **Resume Dialog:** (NEW)
+- 4. **Dual Feedback System:**
+   - Both Cancel and Resume show:
+     - Center modal dialog with confirmation message
+     - Top-right snackbar toast with detailed message (including expiry date for Cancel)
+**Files Modified**
+- `routes/api.php` - Added 2 new routes
+- `app/Http/Controllers/User/SubscriptionController.php` - Added 2 methods, enhanced logging, fixed relation bug
+- `app/Models/User.php` - Reordered status checks for grace period detection
+- `resources/js/views/pages/account-settings/AccountSettingsBillingAndPlans.vue` - Added Resume dialog, updated button logic, enhanced UX
+**Commit Message**
+[pending]- feat: implement subscription cancellation and resumption with confirmation dialogs
+
+
 #### [03-01-2026] feat: implement universal subscription sync of expiry date with race-condition protection and multi-interval support
 # 🏆 Tasks Completed
 - Reliable Subscription Expiry Sync
@@ -44,7 +118,7 @@ The system is now **Race-Proof**, **Interval-Aware**, and **Visually Accurate**.
 - routes/api.php
 - app/Console/Commands/SyncSubscriptionPeriods.php - to sync subscription periods of users until production 
 **Commit**:
-[pending] - implement universal subscription sync of expiry date with race-condition protection and multi-interval support
+[fa5aca9] - implement universal subscription sync of expiry date with race-condition protection and multi-interval support
 
 #### [02-01-2026] - Implement free trial enforcement, optimize webhook performance, and update subscription model for better billing tracking.
 **SubscriptionController.php** - Free Plan Management
