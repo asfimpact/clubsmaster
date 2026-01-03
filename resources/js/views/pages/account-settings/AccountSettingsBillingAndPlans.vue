@@ -53,29 +53,38 @@ const countryList = [
   { value: 'JP', title: 'Japan' },
 ]
 
-// Existing plan details fetching
-const planDetails = ref({
-    plan_name: 'Loading...',
-    plan_price: 0,
-    status: 'inactive',
-    active_until: 'N/A',
-    days_consumed: 0,
-    total_days: 0,
-    days_remaining: 0,
-    progress_percent: 0,
-    currency: '$', 
+const userData = useCookie('userData')
+
+// Use subscription_summary from API instead of /user/billing
+const planDetails = computed(() => {
+  const summary = userData.value?.subscription_summary
+  
+  if (!summary) {
+    return {
+      plan_name: 'Loading...',
+      plan_price: '0',
+      status: 'inactive',
+      active_until: 'N/A',
+      currency: '£',
+    }
+  }
+
+  // Extract numeric price
+  let numericPrice = '0'
+  if (summary.price && summary.price !== 'Free') {
+    numericPrice = summary.price.toString().replace('£', '').trim()
+  }
+
+  return {
+    plan_name: summary.plan_name,
+    plan_price: numericPrice,
+    status: summary.status.toLowerCase().includes('active') ? 'active' : 'inactive',
+    active_until: summary.expiry_date,
+    currency: '£',
+    days_remaining: summary.days_remaining || 0,
+  }
 })
 
-const fetchBilling = async () => {
-    try {
-        const { data } = await useApi('/user/billing')
-        if (data.value) {
-            planDetails.value = data.value
-        }
-    } catch (e) {
-        console.error("Failed to fetch billing", e)
-    }
-}
 
 // Fetch payment methods
 const fetchPaymentMethods = async () => {
@@ -334,7 +343,6 @@ const getCardImage = (brand) => {
 }
 
 onMounted(() => {
-    fetchBilling()
     fetchPaymentMethods()
     fetchBillingAddress()
     initializeStripeElements() // Initialize Stripe on page load

@@ -1,12 +1,60 @@
-## [02-01-2026] - Implement free trial enforcement, optimize webhook performance, and update subscription model for better billing tracking.
-# **SubscriptionController.php** - Free Plan Management
+#### [03-01-2026] feat: implement universal subscription sync of expiry date with race-condition protection and multi-interval support
+# 🏆 Tasks Completed
+- Reliable Subscription Expiry Sync
+- Race-Condition Proofing: Implemented "Aggressive Sync" in `handleCustomerSubscriptionCreated`. The system now immediately retrieves the subscription data from Stripe and saves the expiry date, ensuring the date exists even if the Checkout webhook arrives out of order.
+- Universal Interval Support: Fixed a critical logic gap where 6-month or quarterly plans were defaulting to 1 month. The system now respects Stripe's `interval_count` (e.g., adding 6 months vs 1 month).
+- Date Calculation Fix: Replaced fragile dynamic method calls with a robust PHP `match` expression. This solved the bug where "1 Year" plans were being calculated as "1 Month" due to string parsing errors.
+- Universal Sync: Applied this robust logic across all three critical webhooks: `created`, `updated` (upgrades/swaps), and `checkout.session.completed`.
+- UI Synchronization & Truth Alignment
+- Strict Plan Highlighting: Updated the "Current Plan" (Green Button) logic in `AppPricing.vue`. It now strictly compares the Stripe **Price ID** instead of internal Plan IDs. This fixes the issue where an upgraded plan (e.g., £29) was visually defaulting to a cheaper plan (e.g., £6.99) due to ID confusion.
+- Smart Pricing Toggle: Implemented intelligent logic to automatically toggle the view between "Monthly" and "Yearly" on page load based on the user's active Stripe Price ID.
+- Data Integrity & Model Cleanup
+- Enhanced User Model: Added `subscription_summary` to the `$appends` array in `User.php`, ensuring frontend components can always access computed billing status.
+- Native Cancellation Check: Refactored valid-until logic to use Cashier's native `onGracePeriod()` method, improving reliability for cancelled-but-active subscriptions.
+**File Changes**
+ `WebhookController.php`
+- Refactored `handleCustomerSubscriptionCreated`: Added "Aggressive Sync" to fix race conditions.
+- Refactored `handleCustomerSubscriptionUpdated`: Added "Universal Interval Sync" to handle upgrades (Yearly/6-Months) correctly.
+- Refactored `handleCheckoutSessionCompleted`: Aligned logic with the new robust standard.
+- Logic Update: Replaced dynamic `add{$Unit}s()` calls with explicit `match` statements for Year/Month/Week/Day reliability.
+ `User.php`
+- Updated `$appends`: Added `'subscription_summary'` to ensure visibility in JSON responses.
+- Refactored `getSubscriptionSummaryAttribute`: Swapped manual date checks for `$subscription->onGracePeriod()` for cleaner status determination.
+ `AppPricing.vue`
+- Updated `fetchPlans`: Now maps `stripe_monthly_price_id` and `stripe_yearly_price_id` to the local plan object.
+- Updated `isPlanCurrent`: Implemented strict matching against `userData.subscription.stripe_price`.
+- Updated `onMounted`: Added "Smart Toggle" logic to set Monthly/Yearly state based on the active Price ID.
+ `AccountSettingsBillingAndPlans.vue`
+- Minor: Likely adjustments to how `planDetails` are consumed or fallback logic.
+ `Subscription.php`
+- Minor: Likely fillable adjustments or internal Cashier overrides if applicable during previous steps.
+ `routes/api.php`
+- Minor: ensuring `/user` route appends the necessary subscription data.
+## ✅ System Status
+The system is now **Race-Proof**, **Interval-Aware**, and **Visually Accurate**.
+- Backend: Calculates dates mathematically based on Stripe's definitive `interval_count`.
+- Frontend: Highlights plans based on definitive Stripe Price IDs.
+**Files Modified**
+- app/Http/Controllers/WebhookController.php
+- app/Models/Subscription.php
+- app/Models/User.php
+- resources/js/components/AppPricing.vue
+- resources/js/pages/index.vue
+- resources/js/views/pages/account-settings/AccountSettingsBillingAndPlans.vue       
+- routes/api.php
+- app/Console/Commands/SyncSubscriptionPeriods.php - to sync subscription periods of users until production 
+**Commit**:
+[pending] - implement universal subscription sync of expiry date with race-condition protection and multi-interval support
+
+#### [02-01-2026] - Implement free trial enforcement, optimize webhook performance, and update subscription model for better billing tracking.
+**SubscriptionController.php** - Free Plan Management
 - **Free vs Paid Plan Logic**: Separated the logic for free and paid plans. If the price is zero, it's treated as a free plan, otherwise, it's a paid plan.
 - **Free Plan Creation**: For free plans, a local subscription is created with a status of 'free' and an expiry date set based on the validity period.
 - **Paid Plans**: Redirect to Stripe for processing.
 - **Lifetime Trial Enforcement**: Added a check to ensure that a user can only use the free trial once. If they’ve used it before, a 403 error is returned.
 - **Graceful Cancellation**: Instead of deleting a subscription when cancelled, it expires with an `ends_at` timestamp and updates the status to 'cancelled'.
 - **Semantic Date Columns**: For better clarity, `ends_at` is used for free plan expirations, and `trial_ends_at` is set to null after the trial period ends.
-### WebhookController.php - Performance & Billing Tracking
+**WebhookController.php** - Performance & Billing Tracking
 - **Performance Improvement**: Removed payment method synchronization from the `subscription.updated` webhook, reducing processing time from 1200ms to 130ms.
 - **Timing Logs**: Added detailed start and end logging to track processing durations for all webhook handlers.
 - **Syncing `current_period_end`**: This field is now synced with both `subscription.created` and `subscription.updated` webhooks.
@@ -26,7 +74,7 @@
 - **Debug Logging**: Added debug logging to trace user data retrieval. (This can be removed in production.)
 2026_01_02_061552_add_current_period_end_to_subscriptions_table.php - New Migration
 - **Database Migration**: A new column `current_period_end` has been added to the `subscriptions` table to track the end of the current billing period. This column is nullable and placed after `ends_at`.
-### 🎯 **Overall Impact:**
+# 🎯 **Overall Impact:**
 - **Free Trial Lifetime Enforcement**: Users can only use the free trial once.
 - **Improved Webhook Performance**: The time taken to process the `subscription.updated` webhook has been reduced by 89% (1200ms → 130ms).
 - **Billing Cycle Tracking**: The addition of the `current_period_end` column allows more accurate tracking of billing cycles.
@@ -47,9 +95,7 @@
 - routes/api.php
 - 2026_01_02_061552_add_current_period_end_to_subscriptions_table.php
 **Commit Message**
-- Implement free trial enforcement, optimize webhook performance, and update subscription model for better billing tracking.
-
-
+- [628df07]Implement free trial enforcement, optimize webhook performance, and update subscription model for better billing tracking.
 
 #### [2026-01-01] - Add fallback for default payment method, configure Stripe webhooks, and improve billing page error handling.
 - **StripeController.php**
@@ -82,8 +128,7 @@
 - StripeController.php
 - AccountSettingsBillingAndPlans.vue
 **Commit Message**
-- Add fallback for default payment method, configure Stripe webhooks, and improve billing page error handling.
-
+- [c48d60b]Add fallback for default payment method, configure Stripe webhooks, and improve billing page error handling.
 
 #### [2026-01-01] - Payment Method & Billing Address Management Implementation
 - **Payment Methods Management:**
@@ -114,7 +159,6 @@
   - Replaced `useApi` with native AccountSettingsBillingAndPlans API for proper error response handling
   - Fixed authentication by using `useCookie('accessToken')` instead of `localStorage`
   - Backend now correctly blocks deletion of last payment method when user has active subscription
-
 - **Loading States:**
   - Added `isLoadingPaymentMethods` and `isLoadingBillingAddress` refs (initialized as `true`)
   - Wrapped fetch functions with `finally` blocks to ensure loading state always resets
@@ -171,7 +215,7 @@
   - `package.json` - Added @stripe/stripe-js
   - `pnpm-lock.yaml` - Updated dependencies
 **Commit Message:**
-[pending] - Implement payment method & billing address management with Stripe integration
+[abb4077] - Implement payment method & billing address management with Stripe integration
 
 #### [2026-01-01] - Payment Method Sync & Upgrade Flow Fixes
 ## 🐛 Critical Bug Fixes

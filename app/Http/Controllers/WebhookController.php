@@ -21,81 +21,65 @@ class WebhookController extends CashierController
         $response = parent::handleCustomerSubscriptionCreated($payload);
 
         try {
-            // 2. Extract our custom metadata
             $data = $payload['data']['object'];
             $stripeId = $data['id'];
 
-            // Log raw metadata for debugging
-            Log::info("Webhook Processing: Subscription {$stripeId}", ['metadata' => $data['metadata'] ?? 'NONE']);
+            // AGGRESSIVE SYNC (The Cheat Code): Link Plan ID & Date immediately
+            \Stripe\Stripe::setApiKey(config('cashier.secret'));
+            $stripeSubscription = \Stripe\Subscription::retrieve($stripeId);
 
-            // Metadata can be sometimes nested in 'metadata' key or directly on object depending on API version
-            // Cashier usually ensures metadata is available.
-            $planId = $data['metadata']['plan_id'] ?? null;
+            $periodEnd = $stripeSubscription['current_period_end'] ?? null;
 
-            if ($planId) {
-                // 3. Update our local subscription record with the Plan ID
-                // We also forcefully set stripe_status to ensure consistency immediately
-                // And explicitly set starts_at to NOW() if it was missed
-                $updated = Subscription::where('stripe_id', $stripeId)->update([
-                    'plan_id' => $planId,
+            // TRUTH: Check the actual plan interval AND count
+            $planObj = $stripeSubscription['items']['data'][0]['plan'] ?? [];
+            $unit = $planObj['interval'] ?? 'month'; // 'month', 'year', 'day', 'week'
+            $count = $planObj['interval_count'] ?? 1;
+
+            $planId = $stripeSubscription['metadata']['plan_id'] ?? null;
+
+            $sub = Subscription::where('stripe_id', $stripeId)->first();
+
+            if ($sub) {
+                // Waterfall: Stripe Date -> Calculated Date based on REAL interval & count
+                if ($periodEnd) {
+                    $calculatedDate = \Carbon\Carbon::createFromTimestamp($periodEnd);
+                    $source = 'Stripe';
+                } else {
+                    // ROBUST CALCULATION (Match Expression)
+                    $calculatedDate = match ($unit) {
+                        'year' => now()->addYears($count),
+                        'month' => now()->addMonths($count),
+                        'week' => now()->addWeeks($count),
+                        'day' => now()->addDays($count),
+                        default => now()->addMonths($count),
+                    };
+                    $source = "Calculated ({$count} {$unit})";
+                }
+
+                $updateData = [
+                    'current_period_end' => $calculatedDate,
                     'stripe_status' => 'active',
-                    'starts_at' => now(), // Force start date
+                    'starts_at' => now()
+                ];
+                if ($planId) {
+                    $updateData['plan_id'] = $planId;
+                }
+
+                $sub->forceFill($updateData)->save();
+
+                Log::info("🏁 RACE PROOF SYNC: Date saved for {$stripeId}", [
+                    'period_end' => $calculatedDate->toDateString(),
+                    'source' => $source
                 ]);
 
-                if ($updated) {
-                    Log::info("Webhook Success: Plan ID {$planId} linked to Subscription {$stripeId}");
-
-                    // CRITICAL: Sync payment method to local DB for UI display
-                    $subscription = Subscription::where('stripe_id', $stripeId)->first();
-                    if ($subscription && $subscription->user) {
-                        try {
-                            $user = $subscription->user;
-
-                            // Fetch payment methods from Stripe API directly
-                            if ($user->stripe_id) {
-                                $paymentMethods = $user->paymentMethods();
-
-                                if ($paymentMethods->isNotEmpty()) {
-                                    $defaultPM = $paymentMethods->first();
-
-                                    // Manually update the user record
-                                    $user->update([
-                                        'pm_type' => $defaultPM->card->brand ?? 'card',
-                                        'pm_last_four' => $defaultPM->card->last4 ?? null,
-                                    ]);
-
-                                    Log::info("Webhook: Payment method synced to local DB", [
-                                        'user_id' => $user->id,
-                                        'pm_type' => $defaultPM->card->brand,
-                                        'pm_last_four' => $defaultPM->card->last4,
-                                    ]);
-                                } else {
-                                    Log::warning("Webhook: No payment methods found in Stripe", ['user_id' => $user->id]);
-                                }
-                            }
-                        } catch (\Exception $e) {
-                            Log::warning("Webhook: Could not sync payment method", [
-                                'user_id' => $subscription->user_id,
-                                'error' => $e->getMessage(),
-                            ]);
-                        }
-                    }
-                } else {
-                    Log::error("Webhook Error: Could not find subscription with stripe_id {$stripeId} to update.");
+                if (!$periodEnd) {
+                    Log::info("🎯 FIXED SYNC (Created): Added {$count} {$unit}(s). New date: " . $calculatedDate->toDateString());
                 }
             } else {
-                Log::warning("Webhook Warning: No plan_id metadata found for Subscription {$stripeId}");
-            }
-
-            // Sync current_period_end for billing cycle tracking
-            if (isset($data['current_period_end']) && is_numeric($data['current_period_end'])) {
-                Subscription::where('stripe_id', $stripeId)->update([
-                    'current_period_end' => \Carbon\Carbon::createFromTimestamp($data['current_period_end']),
-                ]);
+                Log::warning("Webhook Warning: Subscription {$stripeId} still not found after parent call");
             }
         } catch (\Exception $e) {
-            Log::error('Failed to sync plan_id on subscription created', [
-                'error' => $e->getMessage(),
+            Log::error('❌ Race Sync Failed: ' . $e->getMessage(), [
                 'stripe_subscription_id' => $stripeId ?? 'unknown'
             ]);
         }
@@ -116,29 +100,66 @@ class WebhookController extends CashierController
     {
         $startTime = microtime(true);
         Log::info('🕐 Webhook START: customer.subscription.updated', ['time' => $startTime]);
-        // 1. Let Cashier update the subscription status/dates
+
+        // 1. Let Cashier update the subscription status/dates first
         $response = parent::handleCustomerSubscriptionUpdated($payload);
 
         try {
             $data = $payload['data']['object'];
             $stripeId = $data['id'];
-            $planId = $data['metadata']['plan_id'] ?? null;
 
-            if ($planId) {
-                Subscription::where('stripe_id', $stripeId)->update([
-                    'plan_id' => $planId
-                ]);
-                Log::info("Webhook Update: Synced plan_id {$planId} for Subscription {$stripeId}");
-            }
+            // 2. FORCE RE-SYNC: Direct API call to get the new end date
+            \Stripe\Stripe::setApiKey(config('cashier.secret'));
+            $stripeSubscription = \Stripe\Subscription::retrieve($stripeId);
 
-            // Sync current_period_end for billing cycle tracking
-            if (isset($data['current_period_end']) && is_numeric($data['current_period_end'])) {
-                Subscription::where('stripe_id', $stripeId)->update([
-                    'current_period_end' => \Carbon\Carbon::createFromTimestamp($data['current_period_end']),
-                ]);
+            $periodEnd = $stripeSubscription['current_period_end'] ?? null;
+
+            // TRUTH: Check the actual plan interval AND count
+            $planObj = $stripeSubscription['items']['data'][0]['plan'] ?? [];
+            $unit = $planObj['interval'] ?? 'month';
+            $count = $planObj['interval_count'] ?? 1;
+
+            $planId = $stripeSubscription['metadata']['plan_id'] ?? null;
+
+            $sub = Subscription::where('stripe_id', $stripeId)->first();
+
+            if ($sub) {
+                if ($periodEnd) {
+                    // HAPPY PATH: Stripe has the new date
+                    $updateData = [
+                        'current_period_end' => \Carbon\Carbon::createFromTimestamp($periodEnd),
+                        'stripe_status' => 'active'
+                    ];
+                    if ($planId) {
+                        $updateData['plan_id'] = $planId;
+                    }
+
+                    $sub->forceFill($updateData)->save();
+                    Log::info("🔄 UPGRADE SUCCESS: Synced new end date for {$stripeId}: " . date('Y-m-d', $periodEnd));
+                } else {
+                    // FALLBACK: Calculate based on REAL interval & count
+                    $calculatedDate = match ($unit) {
+                        'year' => now()->addYears($count),
+                        'month' => now()->addMonths($count),
+                        'week' => now()->addWeeks($count),
+                        'day' => now()->addDays($count),
+                        default => now()->addMonths($count),
+                    };
+
+                    $updateData = [
+                        'current_period_end' => $calculatedDate,
+                        'stripe_status' => 'active'
+                    ];
+                    if ($planId) {
+                        $updateData['plan_id'] = $planId;
+                    }
+
+                    $sub->forceFill($updateData)->save();
+                    Log::info("🎯 FIXED SYNC (Updated): Added {$count} {$unit}(s). New date: " . $calculatedDate->toDateString());
+                }
             }
         } catch (\Exception $e) {
-            Log::error("Webhook Update Sync Failed: " . $e->getMessage());
+            Log::error("❌ Upgrade Sync Failed: " . $e->getMessage());
         }
 
         $endTime = microtime(true);
@@ -166,20 +187,68 @@ class WebhookController extends CashierController
         if ($subscriptionId && $planId) {
             try {
                 // Use the raw model to bypass Cashier's internal guards
-                // We update the subscription that Cashier (hopefully) just created via the earlier webhook
                 $updated = Subscription::where('stripe_id', $subscriptionId)->update([
                     'plan_id' => $planId,
                     'starts_at' => now(),
                     'stripe_status' => 'active'
                 ]);
 
+                // CHEAT CODE: Force retrieve subscription
+                if ($subscriptionId) {
+                    try {
+                        \Stripe\Stripe::setApiKey(config('cashier.secret'));
+                        $stripeSubscription = \Stripe\Subscription::retrieve($subscriptionId);
+                        $subArray = $stripeSubscription->toArray();
+                        $periodEnd = $subArray['current_period_end'] ?? null;
+                        $trialEnd = $subArray['trial_end'] ?? null;
+
+                        // TRUTH: Check the actual plan interval AND count
+                        $planObj = $stripeSubscription['items']['data'][0]['plan'] ?? [];
+                        $unit = $planObj['interval'] ?? 'month';
+                        $count = $planObj['interval_count'] ?? 1;
+
+                        $newSubscription = Subscription::where('stripe_id', $subscriptionId)->first();
+
+                        if ($newSubscription) {
+                            if ($periodEnd || $trialEnd) {
+                                // HAPPY PATH: Stripe gave us the data
+                                $newSubscription->forceFill([
+                                    'current_period_end' => $periodEnd ? \Carbon\Carbon::createFromTimestamp($periodEnd) : null,
+                                    'trial_ends_at' => $trialEnd ? \Carbon\Carbon::createFromTimestamp($trialEnd) : null,
+                                    'stripe_status' => 'active'
+                                ])->save();
+
+                                Log::info("🏆 WEBHOOK FIXED: Manual retrieve successful for {$subscriptionId}", [
+                                    'period_end' => $periodEnd ? date('Y-m-d H:i:s', $periodEnd) : 'NULL',
+                                    'trial_end' => $trialEnd ? date('Y-m-d H:i:s', $trialEnd) : 'NULL',
+                                ]);
+                            } else {
+                                // FALLBACK: Calculated based on REAL interval & count
+                                $calculatedDate = match ($unit) {
+                                    'year' => now()->addYears($count),
+                                    'month' => now()->addMonths($count),
+                                    'week' => now()->addWeeks($count),
+                                    'day' => now()->addDays($count),
+                                    default => now()->addMonths($count),
+                                };
+
+                                $newSubscription->forceFill([
+                                    'current_period_end' => $calculatedDate,
+                                    'stripe_status' => 'active'
+                                ])->save();
+
+                                Log::info("🎯 FIXED SYNC (Checkout): Added {$count} {$unit}(s). New date: " . $calculatedDate->toDateString());
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        Log::error("❌ Failed manual retrieve in checkout session: " . $e->getMessage());
+                    }
+                }
+
                 if ($updated) {
-                    Log::info("Webhook Success (Checkout Session): Plan ID {$planId} linked to Subscription {$subscriptionId}");
-
-                    // CRITICAL: Cancel any OTHER active subscriptions for this user
-                    // This enforces "One Active Subscription" rule
+                    Log::info("Webhook Success: Plan ID {$planId} linked");
+                    // Cleanup old subs
                     $newSubscription = Subscription::where('stripe_id', $subscriptionId)->first();
-
                     if ($newSubscription) {
                         $oldSubscriptions = Subscription::where('user_id', $newSubscription->user_id)
                             ->where('type', 'default')
@@ -188,30 +257,17 @@ class WebhookController extends CashierController
                             ->get();
 
                         foreach ($oldSubscriptions as $oldSub) {
-                            Log::info("Webhook Cleanup: Cancelling old subscription", [
-                                'old_stripe_id' => $oldSub->stripe_id,
-                                'new_stripe_id' => $subscriptionId,
-                                'user_id' => $newSubscription->user_id,
-                            ]);
-
-                            // Mark as cancelled in local DB
-                            $oldSub->update([
-                                'stripe_status' => 'canceled',
-                                'ends_at' => now(),
-                            ]);
+                            $oldSub->update(['stripe_status' => 'canceled', 'ends_at' => now()]);
                         }
                     }
                 } else {
-                    Log::warning("Webhook Warning (Checkout Session): Subscription {$subscriptionId} not found yet. It might be created shortly by customer.subscription.created.");
-                    // Fallback: If subscription isn't created yet, we rely on handleCustomerSubscriptionCreated picking it up.
-                    // But typically, Cashier processes events quickly.
+                    Log::warning("Webhook Warning: Subscription {$subscriptionId} not found yet.");
                 }
             } catch (\Exception $e) {
-                Log::error("Webhook Error (Checkout Session): " . $e->getMessage());
+                Log::error("Webhook Error: " . $e->getMessage());
             }
         }
 
-        // Cashier doesn't have a parent method for this event, so we just return success
         $endTime = microtime(true);
         Log::info('✅ Webhook END: checkout.session.completed', [
             'time' => $endTime,
@@ -251,6 +307,15 @@ class WebhookController extends CashierController
             Log::error("Webhook Error (Payment Method Attached): " . $e->getMessage());
         }
 
+        return response()->json(['status' => 'success']);
+    }
+
+    /**
+     * Handle invoice payment succeeded - (Simplified logging only)
+     */
+    protected function handleInvoicePaymentSucceeded(array $payload)
+    {
+        Log::info('🕐 Webhook: invoice.payment_succeeded received (handled via checkout session)');
         return response()->json(['status' => 'success']);
     }
 }

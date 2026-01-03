@@ -10,6 +10,15 @@ class Subscription extends CashierSubscription
      * The attributes that are mass assignable.
      */
     protected $fillable = [
+        'user_id',
+        'type',
+        'plan_id',
+        'stripe_id',
+        'stripe_status',
+        'stripe_price',
+        'quantity',
+        'trial_ends_at',
+        'ends_at',
         'current_period_end',
     ];
 

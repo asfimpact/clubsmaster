@@ -51,7 +51,7 @@ class User extends Authenticatable
      *
      * @var array
      */
-    protected $appends = ['computed_status', 'current_plan', 'current_subscription_frequency'];
+    protected $appends = ['computed_status', 'current_plan', 'current_subscription_frequency', 'subscription_summary'];
 
     /**
      * Get the attributes that should be cast.
@@ -152,6 +152,7 @@ class User extends Authenticatable
                 $query->whereNull('ends_at')
                     ->orWhere('ends_at', '>', now());
             })
+            ->with('plan') // Eager-load plan to avoid N+1 queries
             ->latestOfMany();
     }
 
@@ -162,6 +163,107 @@ class User extends Authenticatable
     public function hasActiveSubscription()
     {
         return $this->subscribed('default');
+    }
+
+    /**
+     * Get normalized subscription summary for UI display.
+     * Returns consistent data structure regardless of subscription state.
+     */
+    public function getSubscriptionSummaryAttribute()
+    {
+        $subscription = $this->subscription()->first();
+
+        // No active subscription
+        if (!$subscription) {
+            return [
+                'status' => 'Inactive',
+                'plan_name' => 'No Active Plan',
+                'expiry_date' => 'N/A',
+                'price' => 'Free',
+                'currency' => 'GBP',
+                'billing_cycle' => null,
+                'days_remaining' => 0,
+            ];
+        }
+
+        $plan = $subscription->plan;
+        $status = 'Active';
+        $expiryDate = 'N/A';
+        $price = 'Free';
+        $billingCycle = null;
+
+        // Determine status and expiry based on stripe_status
+        if ($subscription->stripe_status === 'free') {
+            // Free plan
+            $status = 'Active (Free)';
+            $expiryDate = $subscription->ends_at
+                ? $subscription->ends_at->format('M d, Y')
+                : 'N/A';
+            $price = 'Free';
+        } elseif ($subscription->stripe_status === 'active') {
+            // Active paid subscription
+            $status = 'Active';
+
+            // Waterfall of Truth: Check current_period_end, then trial_ends_at, then ends_at
+            $expiryTimestamp = $subscription->current_period_end
+                ?? $subscription->trial_ends_at
+                ?? $subscription->ends_at;
+
+            $expiryDate = $expiryTimestamp
+                ? $expiryTimestamp->format('M d, Y')
+                : 'Syncing...';
+
+            // Determine price and billing cycle from plan
+            // Check metadata or stripe_price to determine frequency
+            if ($subscription->stripe_price && str_contains($subscription->stripe_price, 'year')) {
+                $price = $plan ? '£' . $plan->yearly_price : 'N/A';
+                $billingCycle = 'yearly';
+            } else {
+                $price = $plan ? '£' . $plan->price : 'N/A';
+                $billingCycle = 'monthly';
+            }
+        } elseif ($subscription->onGracePeriod()) {
+            // Canceled but still in grace period (Cashier Native Method)
+            $status = 'Active (Cancelling)';
+            $expiryDate = $subscription->ends_at ? $subscription->ends_at->format('M d, Y') : 'N/A';
+
+            // Keep showing price during grace period
+            if ($subscription->stripe_price && str_contains($subscription->stripe_price, 'year')) {
+                $price = $plan ? '£' . $plan->yearly_price : 'N/A';
+                $billingCycle = 'yearly';
+            } else {
+                $price = $plan ? '£' . $plan->price : 'N/A';
+                $billingCycle = 'monthly';
+            }
+        } else {
+            // Expired or other status
+            $status = 'Inactive';
+            $expiryDate = 'Expired';
+            $price = 'Free';
+        }
+
+        // Calculate days remaining (STRICT: as integer)
+        $daysRemaining = 0;
+        if ($subscription->stripe_status === 'free' && $subscription->ends_at) {
+            // Free plan: calculate from ends_at
+            $daysRemaining = (int) max(0, now()->diffInDays($subscription->ends_at, false));
+        } elseif ($subscription->stripe_status === 'active' && $subscription->current_period_end) {
+            // Paid plan: calculate from current_period_end
+            $daysRemaining = (int) max(0, now()->diffInDays($subscription->current_period_end, false));
+        } elseif ($subscription->stripe_status === 'canceled' && $subscription->ends_at && $subscription->ends_at->isFuture()) {
+            // Canceled but in grace period: calculate from ends_at
+            $daysRemaining = (int) max(0, now()->diffInDays($subscription->ends_at, false));
+        }
+
+        return [
+            'status' => $status,
+            'plan_name' => $plan ? $plan->name : 'Unknown Plan',
+            'expiry_date' => $expiryDate,
+            'price' => $price,
+            'currency' => 'GBP',
+            'billing_cycle' => $billingCycle,
+            'days_remaining' => $daysRemaining,
+        ];
     }
 
     /**

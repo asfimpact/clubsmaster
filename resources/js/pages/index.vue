@@ -1,4 +1,6 @@
 <script setup>
+import { useApi } from '@/composables/useApi'
+
 const userData = useCookie('userData')
 const router = useRouter()
 
@@ -16,16 +18,16 @@ if (userData.value?.role === 'admin') {
   router.replace({ name: 'dashboards-crm' })
 }
 
-const dashboardData = [
+const dashboardData = computed(() => [
   {
     title: 'Membership Plan',
-    value: 'Basic',
+    value: userData.value?.subscription_summary?.plan_name || 'No Active Plan',
     icon: 'tabler-award',
     color: 'primary',
   },
   {
     title: 'Expiry Date',
-    value: 'Sep 29, 2025',
+    value: userData.value?.subscription_summary?.expiry_date || 'N/A',
     icon: 'tabler-calendar-event',
     color: 'success',
   },
@@ -35,7 +37,33 @@ const dashboardData = [
     icon: 'tabler-users',
     color: 'warning',
   },
-]
+])
+
+// Fetch fresh user data on mount and poll for updates
+onMounted(async () => {
+  try {
+    const { data } = await useApi('/user')
+    if (data.value) {
+      userData.value = data.value
+    }
+  } catch (e) {
+    console.error('Failed to fetch user data on dashboard mount', e)
+  }
+
+  // Poll every 4 seconds to catch subscription changes from pricing component
+  // (needed because useCookie refs don't share reactivity across components)
+  setInterval(async () => {
+    try {
+      const { data } = await useApi('/user')
+      if (data.value) {
+        userData.value = data.value
+      }
+    } catch (e) {
+      console.error('Failed to refresh user data', e)
+    }
+  }, 4000)
+})
+
 </script>
 
 <template>

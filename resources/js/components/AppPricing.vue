@@ -184,16 +184,16 @@ const confirmFreePlan = async () => {
             return
         }
         
-        if (data.value && data.value.user) {
-            // Update local state
-            userData.value = data.value.user
-            activeSubscriptionId.value = data.value.user.subscription?.plan_id
-            
+        if (data.value) {
             // Show success snackbar
-            snackbarMessage.value = data.value.message
+            snackbarMessage.value = data.value.message || 'Free plan activated successfully!'
             snackbarColor.value = 'success'
             snackbar.value = true
             
+            // Fetch fresh user data to update dashboard cards
+            await fetchUser()
+            
+            // Refresh plans
             fetchPlans()
         }
         
@@ -212,12 +212,8 @@ const fetchPlans = async () => {
         if (userRes.value) {
            userData.value = userRes.value // Sync global cookie
            activeSubscriptionId.value = userRes.value.subscription?.plan_id
-           
-           // Set toggle to match user's current subscription frequency
-           if (userRes.value.current_subscription_frequency) {
-               annualMonthlyPlanPriceToggler.value = userRes.value.current_subscription_frequency === 'yearly'
-           }
         }
+
 
         const { data } = await useApi('/user/plans')
         if (data.value) {
@@ -231,14 +227,13 @@ const fetchPlans = async () => {
                     name: plan.name,
                     tagLine: plan.tagline || 'A simple start for everyone',
                     logo: logo,
+                    stripeMonthlyPriceId: plan.stripe_monthly_price_id,
+                    stripeYearlyPriceId: plan.stripe_yearly_price_id,
                     monthlyPrice: plan.price,
                     yearlyPrice: plan.yearly_price ? parseFloat(plan.yearly_price) : (parseFloat(plan.price) * 12),
                     durationDays: plan.duration_days || 30,
                     yearlyDurationDays: plan.yearly_duration_days || 365,
                     isPopular: false,
-                    // Check against active sub - must match both plan ID and frequency
-                    current: activeSubscriptionId.value === plan.id && 
-                             userData.value?.current_subscription_frequency === (annualMonthlyPlanPriceToggler.value ? 'yearly' : 'monthly'),
                     features: Array.isArray(plan.features) ? plan.features : []
                 }
              })
@@ -250,9 +245,20 @@ const fetchPlans = async () => {
 
 // Helper function to check if a plan is the user's current plan
 // This needs to be a function, not a stored value, so it recalculates when toggle changes
-const isPlanCurrent = (planId) => {
+const isPlanCurrent = (plan) => {
+    // 1. Strict Check: Price ID Match
+    const userPriceId = userData.value?.subscription?.stripe_price
+    if (userPriceId) {
+        if (annualMonthlyPlanPriceToggler.value) { // Yearly Toggle ON
+            return userPriceId === plan.stripeYearlyPriceId
+        } else { // Monthly Toggle ON
+            return userPriceId === plan.stripeMonthlyPriceId
+        }
+    }
+
+    // 2. Fallback: ID Match (Legacy)
     const currentToggleFreq = annualMonthlyPlanPriceToggler.value ? 'yearly' : 'monthly'
-    return activeSubscriptionId.value === planId && 
+    return activeSubscriptionId.value === plan.id && 
            userData.value?.current_subscription_frequency === currentToggleFreq
 }
 
@@ -272,9 +278,39 @@ const fetchUser = async () => {
   }
 }
 
-onMounted(() => {
-    fetchUser()  // Fetch fresh user data first
-    fetchPlans()
+onMounted(async () => {
+    // Check if returning from Stripe checkout
+    const urlParams = new URLSearchParams(window.location.search)
+    const isReturningFromStripe = urlParams.get('session_id')
+    
+    if (isReturningFromStripe) {
+        // First pulse: Wait 3 seconds for webhooks to process
+        await new Promise(resolve => setTimeout(resolve, 3000))
+    }
+    
+    // Initial fetch (wait for user data to initialize toggle)
+    await fetchUser()
+    
+    // Fetch plans first so we have the Price IDs to compare
+    await fetchPlans()
+
+    // ONE-TIME: Smart Toggle Initialization using Strict Price Match
+    // We check if the user's active price ID matches any plan's YEARLY price ID.
+    // If so, we set toggle to Yearly (true). Otherwise, default to Monthly (false).
+    const userPriceId = userData.value?.subscription?.stripe_price
+    if (userPriceId && pricingPlans.value.length > 0) {
+        const isYearlyPrice = pricingPlans.value.some(p => p.stripeYearlyPriceId === userPriceId)
+        console.log('🔘 Smart Toggle:', { userPriceId, isYearlyPrice })
+        annualMonthlyPlanPriceToggler.value = isYearlyPrice
+    } else if (userData.value?.current_subscription_frequency) {
+        // Fallback to legacy string check
+        annualMonthlyPlanPriceToggler.value = userData.value.current_subscription_frequency === 'yearly'
+    }
+    
+    // Second pulse: Fetch again after 3 seconds to catch webhook updates
+    setTimeout(() => {
+        fetchUser()
+    }, 3000)
 })
 </script>
 
@@ -385,7 +421,7 @@ onMounted(() => {
                 £
               </div>
               <h1 class="text-h1 font-weight-medium text-primary">
-                {{ annualMonthlyPlanPriceToggler ? plan.yearlyPrice : plan.monthlyPrice }}
+                {{ Number(annualMonthlyPlanPriceToggler ? plan.yearlyPrice : plan.monthlyPrice).toFixed(2) }}
               </h1>
               <div class="text-body-1 font-weight-medium align-self-end">
                 {{ annualMonthlyPlanPriceToggler ? '/year' : '/month' }}
@@ -422,24 +458,25 @@ onMounted(() => {
             </VListItem>
           </VList>
 
+
           <!-- 👉 Plan actions -->
           <VBtn
             block
-            :color="isPlanCurrent(plan.id) ? 'success' : (plan.monthlyPrice == 0 && hasUsedFreeTrial ? 'grey' : 'primary')"
+            :color="isPlanCurrent(plan) ? 'success' : ((annualMonthlyPlanPriceToggler ? plan.yearlyPrice : plan.monthlyPrice) == 0 && hasUsedFreeTrial ? 'grey' : 'primary')"
             :variant="plan.isPopular ? 'elevated' : 'tonal'"
             :active="false"
-            :disabled="isPlanCurrent(plan.id) || loadingPlanId === plan.id || (plan.monthlyPrice == 0 && hasUsedFreeTrial)"
+            :disabled="isPlanCurrent(plan) || loadingPlanId === plan.id || ((annualMonthlyPlanPriceToggler ? plan.yearlyPrice : plan.monthlyPrice) == 0 && hasUsedFreeTrial)"
             :loading="loadingPlanId === plan.id"
-            @click="!isPlanCurrent(plan.id) && subscribeToPlan(plan.id)"
+            @click="!isPlanCurrent(plan) && subscribeToPlan(plan.id)"
           >
             <template v-if="loadingPlanId === plan.id">
               Redirecting to Checkout...
             </template>
-            <template v-else-if="plan.monthlyPrice == 0 && hasUsedFreeTrial">
+            <template v-else-if="(annualMonthlyPlanPriceToggler ? plan.yearlyPrice : plan.monthlyPrice) == 0 && hasUsedFreeTrial">
               Trial Used - Upgrade Required
             </template>
             <template v-else>
-              {{ isPlanCurrent(plan.id) ? 'Your Current Plan' : 'Select Plan' }}
+              {{ isPlanCurrent(plan) ? 'Your Current Plan' : 'Select Plan' }}
             </template>
           </VBtn>
         </VCardText>

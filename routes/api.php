@@ -8,14 +8,12 @@ Route::get('/user', function (Request $request) {
     $user = $request->user()->load('subscription.plan');
 
     // Add flag to check if user has ever used free trial
-    // Use direct DB query to check entire history
-    $hasUsedTrial = \App\Models\Subscription::where('user_id', $user->id)
+    $user->has_used_free_trial = \App\Models\Subscription::where('user_id', $user->id)
         ->where('stripe_status', 'free')
         ->exists();
 
-    \Log::info('API /user called', ['user_id' => $user->id, 'has_used_free_trial' => $hasUsedTrial]);
-
-    $user->has_used_free_trial = $hasUsedTrial;
+    // Append subscription summary (selective for performance)
+    $user->append('subscription_summary');
 
     return $user;
 })->middleware('auth:sanctum');
