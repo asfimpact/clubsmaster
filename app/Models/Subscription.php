@@ -20,6 +20,7 @@ class Subscription extends CashierSubscription
         'trial_ends_at',
         'ends_at',
         'current_period_end',
+        'starts_at', // Added for subscription start date tracking
     ];
 
     /**

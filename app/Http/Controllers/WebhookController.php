@@ -59,7 +59,9 @@ class WebhookController extends CashierController
                 $updateData = [
                     'current_period_end' => $calculatedDate,
                     'stripe_status' => 'active',
-                    'starts_at' => now()
+                    'starts_at' => $stripeSubscription['start_date']
+                        ? \Carbon\Carbon::createFromTimestamp($stripeSubscription['start_date'])
+                        : now()
                 ];
                 if ($planId) {
                     $updateData['plan_id'] = $planId;
@@ -186,62 +188,64 @@ class WebhookController extends CashierController
 
         if ($subscriptionId && $planId) {
             try {
+                // CHEAT CODE: Force retrieve subscription FIRST to get accurate start_date
+                \Stripe\Stripe::setApiKey(config('cashier.secret'));
+                $stripeSubscription = \Stripe\Subscription::retrieve($subscriptionId);
+                $subArray = $stripeSubscription->toArray();
+
+                // Extract start_date from Stripe
+                $startDate = $subArray['start_date']
+                    ? \Carbon\Carbon::createFromTimestamp($subArray['start_date'])
+                    : now();
+
                 // Use the raw model to bypass Cashier's internal guards
                 $updated = Subscription::where('stripe_id', $subscriptionId)->update([
                     'plan_id' => $planId,
-                    'starts_at' => now(),
+                    'starts_at' => $startDate,
                     'stripe_status' => 'active'
                 ]);
 
-                // CHEAT CODE: Force retrieve subscription
-                if ($subscriptionId) {
-                    try {
-                        \Stripe\Stripe::setApiKey(config('cashier.secret'));
-                        $stripeSubscription = \Stripe\Subscription::retrieve($subscriptionId);
-                        $subArray = $stripeSubscription->toArray();
-                        $periodEnd = $subArray['current_period_end'] ?? null;
-                        $trialEnd = $subArray['trial_end'] ?? null;
+                // Continue with period_end sync
+                $periodEnd = $subArray['current_period_end'] ?? null;
+                $trialEnd = $subArray['trial_end'] ?? null;
 
-                        // TRUTH: Check the actual plan interval AND count
-                        $planObj = $stripeSubscription['items']['data'][0]['plan'] ?? [];
-                        $unit = $planObj['interval'] ?? 'month';
-                        $count = $planObj['interval_count'] ?? 1;
+                // TRUTH: Check the actual plan interval AND count
+                $planObj = $stripeSubscription['items']['data'][0]['plan'] ?? [];
+                $unit = $planObj['interval'] ?? 'month';
+                $count = $planObj['interval_count'] ?? 1;
 
-                        $newSubscription = Subscription::where('stripe_id', $subscriptionId)->first();
+                $newSubscription = Subscription::where('stripe_id', $subscriptionId)->first();
 
-                        if ($newSubscription) {
-                            if ($periodEnd || $trialEnd) {
-                                // HAPPY PATH: Stripe gave us the data
-                                $newSubscription->forceFill([
-                                    'current_period_end' => $periodEnd ? \Carbon\Carbon::createFromTimestamp($periodEnd) : null,
-                                    'trial_ends_at' => $trialEnd ? \Carbon\Carbon::createFromTimestamp($trialEnd) : null,
-                                    'stripe_status' => 'active'
-                                ])->save();
+                if ($newSubscription) {
+                    if ($periodEnd || $trialEnd) {
+                        // HAPPY PATH: Stripe gave us the data
+                        $newSubscription->forceFill([
+                            'current_period_end' => $periodEnd ? \Carbon\Carbon::createFromTimestamp($periodEnd) : null,
+                            'trial_ends_at' => $trialEnd ? \Carbon\Carbon::createFromTimestamp($trialEnd) : null,
+                            'stripe_status' => 'active'
+                        ])->save();
 
-                                Log::info("🏆 WEBHOOK FIXED: Manual retrieve successful for {$subscriptionId}", [
-                                    'period_end' => $periodEnd ? date('Y-m-d H:i:s', $periodEnd) : 'NULL',
-                                    'trial_end' => $trialEnd ? date('Y-m-d H:i:s', $trialEnd) : 'NULL',
-                                ]);
-                            } else {
-                                // FALLBACK: Calculated based on REAL interval & count
-                                $calculatedDate = match ($unit) {
-                                    'year' => now()->addYears($count),
-                                    'month' => now()->addMonths($count),
-                                    'week' => now()->addWeeks($count),
-                                    'day' => now()->addDays($count),
-                                    default => now()->addMonths($count),
-                                };
+                        Log::info("🏆 WEBHOOK FIXED: Manual retrieve successful for {$subscriptionId}", [
+                            'period_end' => $periodEnd ? date('Y-m-d H:i:s', $periodEnd) : 'NULL',
+                            'trial_end' => $trialEnd ? date('Y-m-d H:i:s', $trialEnd) : 'NULL',
+                            'starts_at' => $startDate->toDateString(),
+                        ]);
+                    } else {
+                        // FALLBACK: Calculated based on REAL interval & count
+                        $calculatedDate = match ($unit) {
+                            'year' => now()->addYears($count),
+                            'month' => now()->addMonths($count),
+                            'week' => now()->addWeeks($count),
+                            'day' => now()->addDays($count),
+                            default => now()->addMonths($count),
+                        };
 
-                                $newSubscription->forceFill([
-                                    'current_period_end' => $calculatedDate,
-                                    'stripe_status' => 'active'
-                                ])->save();
+                        $newSubscription->forceFill([
+                            'current_period_end' => $calculatedDate,
+                            'stripe_status' => 'active'
+                        ])->save();
 
-                                Log::info("🎯 FIXED SYNC (Checkout): Added {$count} {$unit}(s). New date: " . $calculatedDate->toDateString());
-                            }
-                        }
-                    } catch (\Exception $e) {
-                        Log::error("❌ Failed manual retrieve in checkout session: " . $e->getMessage());
+                        Log::info("🎯 FIXED SYNC (Checkout): Added {$count} {$unit}(s). New date: " . $calculatedDate->toDateString());
                     }
                 }
 

@@ -278,18 +278,97 @@ const fetchUser = async () => {
   }
 }
 
+// Enhanced verify with exponential backoff
+const verifySubscription = async (maxRetries = 3) => {
+  // Show simple feedback to user
+  snackbarMessage.value = 'Verifying your subscription, please wait...'
+  snackbarColor.value = 'info'
+  snackbar.value = true
+  
+  let attempt = 0
+  
+  while (attempt < maxRetries) {
+    try {
+      const { data, error } = await useApi('/user/subscription/verify')
+      
+      if (error.value) {
+        throw new Error('Verify API failed')
+      }
+      
+      if (data.value.status === 'synced') {
+        console.log('✅ Subscription verified and synced')
+        await fetchUser() // Refresh user data
+        snackbarMessage.value = 'Payment successful! Your subscription is now active.'
+        snackbarColor.value = 'success'
+        snackbar.value = true
+        return true
+      }
+      
+      if (data.value.status === 'pending') {
+        // Webhook might still be processing, wait and retry
+        attempt++
+        const delay = Math.min(1000 * Math.pow(2, attempt), 5000) // Exponential: 2s, 4s, 5s
+        console.log(`⏳ Subscription pending, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+        continue
+      }
+      
+      // Other statuses (no_stripe_customer, etc.)
+      console.warn('⚠️ Unexpected verify status:', data.value.status)
+      return false
+      
+    } catch (e) {
+      console.error('Verify error:', e)
+      attempt++
+      if (attempt >= maxRetries) {
+        snackbarMessage.value = 'Payment processed, but subscription sync is delayed. Please refresh the page in a moment.'
+        snackbarColor.value = 'warning'
+        snackbar.value = true
+        return false
+      }
+    }
+  }
+}
+
 onMounted(async () => {
-    // Check if returning from Stripe checkout
-    const urlParams = new URLSearchParams(window.location.search)
-    const isReturningFromStripe = urlParams.get('session_id')
+    // Initial fetch to get user data
+    await fetchUser()
     
-    if (isReturningFromStripe) {
-        // First pulse: Wait 3 seconds for webhooks to process
-        await new Promise(resolve => setTimeout(resolve, 3000))
+    // GLOBAL AUTO-TRIGGER: Check for incomplete subscription data
+    // This fixes existing users like User 8 who have incomplete records
+    const user = userData.value
+    const subscription = user?.subscription
+    
+    // Check if subscription exists but is missing ANY critical field
+    const isIncomplete = subscription && (
+        !subscription.starts_at ||
+        !subscription.current_period_end ||
+        !subscription.plan_id ||
+        !subscription.stripe_price
+    )
+    
+    if (user && user.stripe_id && isIncomplete) {
+        console.log('🔧 Detected incomplete subscription, triggering repair...', {
+            has_starts_at: !!subscription.starts_at,
+            has_current_period_end: !!subscription.current_period_end,
+            has_plan_id: !!subscription.plan_id,
+            has_stripe_price: !!subscription.stripe_price,
+        })
+        await verifySubscription() // Repair incomplete data
     }
     
-    // Initial fetch (wait for user data to initialize toggle)
-    await fetchUser()
+    // Check if returning from Stripe checkout
+    const urlParams = new URLSearchParams(window.location.search)
+    const sessionId = urlParams.get('session_id')
+    const paymentSuccess = urlParams.get('payment') === 'success'
+    
+    // INDESTRUCTIBLE SYNC: Trigger verify if session_id exists (Stripe's default redirect)
+    if (sessionId || paymentSuccess) {
+        console.log('🎉 Stripe checkout detected, verifying subscription...', { sessionId, paymentSuccess })
+        await verifySubscription() // Wait for verification with retry logic
+        // Clean URL after verification
+        window.history.replaceState({}, '', window.location.pathname)
+    }
     
     // Fetch plans first so we have the Price IDs to compare
     await fetchPlans()
@@ -307,7 +386,7 @@ onMounted(async () => {
         annualMonthlyPlanPriceToggler.value = userData.value.current_subscription_frequency === 'yearly'
     }
     
-    // Second pulse: Fetch again after 3 seconds to catch webhook updates
+    // Second pulse: Fetch again after 3 seconds to catch any delayed webhook updates
     setTimeout(() => {
         fetchUser()
     }, 3000)
