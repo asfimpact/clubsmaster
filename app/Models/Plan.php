@@ -25,6 +25,26 @@ class Plan extends Model
         'yearly_duration_days' => 'integer',
     ];
 
+    /**
+     * Smart billing label accessor.
+     * Automatically generates human-readable billing period labels.
+     * 
+     * @return string
+     */
+    public function getBillingLabelAttribute()
+    {
+        // Use the duration days to decide the label
+        return match (intval($this->yearly_duration_days)) {
+            7 => 'Per Week',
+            14 => 'Per 2 Weeks',
+            30 => 'Per Month',
+            90 => 'Per Quarter',
+            180 => 'Per 6 Months',
+            365 => 'Per Year',
+            default => 'Per Period',
+        };
+    }
+
     public function subscriptions()
     {
         return $this->hasMany(Subscription::class);

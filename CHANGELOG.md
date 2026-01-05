@@ -1,3 +1,52 @@
+#### [2026-01-05] Remove redundant sync code and fix metadata drift bug & other UI payments info display fixes
+- **StripeController.php**
+Changes:
+- ❌ Removed: Layer 1 immediate sync logic (53 lines) - redundant with webhooks
+- ✅ Added: Metadata sync to Stripe during swap
+updateStripeSubscription(['metadata' => ['plan_id', 'user_id', 'frequency']])
+- ✅ Added: Debug logging to verify plan_id persistence
+- ✅ Added: Error handling for metadata sync failures
+- Why: Fixes "Metadata Drift" bug where plan_id wasn't syncing to Stripe, causing webhooks to not preserve it
+- **SubscriptionController.php**
+Changes:
+- ❌ Removed: verify() method - duplicated webhook functionality
+- ❌ Removed: 
+- syncSubscriptionFromStripe() method (94 lines) - duplicated webhook logic
+- ✅ Kept:  subscribe(), createFreeSubscription(), cancel()
+, resume() methods
+Why: Webhooks already handle subscription syncing automatically when they arrive
+- **User.php**
+Changes:
+✅ Fixed: Price detection logic in getSubscriptionSummaryAttribute()Before: str_contains($subscription->stripe_price, 'year') - - failed for price IDs without "year" string
+- After: $subscription->stripe_price === $plan->stripe_yearly_price_id - exact comparison
+- ✅ Applied to: Both grace period pricing and active subscription pricing
+Why: Price IDs like price_1SlUobIuGQ9wkBtZVulv2XGD don't contain "year", causing wrong price display
+- Updated: getSubscriptionSummaryAttribute()method
+- Changed from hardcoded 'yearly' to dynamic $plan->billing_label
+Now returns "Per 6 Months", "Per Year", etc. instead of just "yearly" Works for all plan intervals automatically
+- 4. **AppPricing.vue**
+Changes:
+- ❌ Removed: verifySubscription() method (52 lines) - redundant API calls
+- ❌ Removed: Global auto-trigger on page load (22 lines) - unnecessary verification
+- ❌ Removed: Session ID verification call (6 lines) - webhooks handle this
+- ❌ Removed: Auto-retry listener (7 lines) - depended on removed verify method
+- ✅ Kept: Connection error state and banner (28 lines) - good UX
+- ✅ Kept: Clean onMounted() with smart toggle logic
+- Why: Webhooks automatically sync subscription data; manual verification was redundant
+- Removed conditional logic {{ planDetails.currency }}{{ planDetails.plan_price }} {{ planDetails.billing_cycle }}
+- 5 **Plan.php**
+- Accessor method to auto-generate billing period labels
+***Redudancy***
+- above all ❌ is removal of reduant work of commit [04-01-2026]feat: Implement Indestructible Payment Sync with Webhook Failure Recovery, where stripe cli closed & testing logs wrong errors
+**Files Modified**
+1. `app/Http/Controllers/StripeController.php`
+2. `app/Http/Controllers/User/SubscriptionController.php`
+3. `app/Models/User.php`
+4. `resources/js/components/AppPricing.vue`
+5. `app/Models/Plan.php`
+**Commit message**
+[pending] - Remove redundant sync code and fix metadata drift bug & other UI payments info display fixes
+
 #### [04-01-2026] feat: Implement Indestructible Payment Sync with Webhook Failure Recovery
 - Task: Indestructible Payment Sync
 - Goal: Fix subscription sync failures caused by webhook delays or failures due to network issues.

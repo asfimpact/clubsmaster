@@ -207,10 +207,15 @@ class User extends Authenticatable
             $expiryDate = $subscription->ends_at ? $subscription->ends_at->format('M d, Y') : 'N/A';
 
             // Keep showing price during grace period
-            if ($subscription->stripe_price && str_contains($subscription->stripe_price, 'year')) {
-                $price = $plan ? '£' . $plan->yearly_price : 'N/A';
-                $billingCycle = 'yearly';
+            // Compare against actual price IDs instead of string matching
+            if ($plan && $subscription->stripe_price === $plan->stripe_yearly_price_id) {
+                $price = '£' . $plan->yearly_price;
+                $billingCycle = $plan->billing_label; // Smart label from Plan model
+            } elseif ($plan && $subscription->stripe_price === $plan->stripe_monthly_price_id) {
+                $price = '£' . $plan->price;
+                $billingCycle = 'monthly';
             } else {
+                // Fallback if price ID doesn't match (shouldn't happen)
                 $price = $plan ? '£' . $plan->price : 'N/A';
                 $billingCycle = 'monthly';
             }
@@ -228,11 +233,16 @@ class User extends Authenticatable
                 : 'Syncing...';
 
             // Determine price and billing cycle from plan
-            // Check metadata or stripe_price to determine frequency
-            if ($subscription->stripe_price && str_contains($subscription->stripe_price, 'year')) {
-                $price = $plan ? '£' . $plan->yearly_price : 'N/A';
-                $billingCycle = 'yearly';
+            // FIXED: Compare against actual price IDs instead of string matching
+            // Uses Plan's smart billing_label accessor for dynamic labels
+            if ($plan && $subscription->stripe_price === $plan->stripe_yearly_price_id) {
+                $price = '£' . $plan->yearly_price;
+                $billingCycle = $plan->billing_label; // Smart label: Per Week, Per 6 Months, etc.
+            } elseif ($plan && $subscription->stripe_price === $plan->stripe_monthly_price_id) {
+                $price = '£' . $plan->price;
+                $billingCycle = 'monthly';
             } else {
+                // Fallback if price ID doesn't match (shouldn't happen)
                 $price = $plan ? '£' . $plan->price : 'N/A';
                 $billingCycle = 'monthly';
             }

@@ -63,6 +63,9 @@ const snackbar = ref(false)
 const snackbarMessage = ref('')
 const snackbarColor = ref('success')
 
+// Connection error state
+const connectionError = ref(false)
+
 // Check if user has ever used free trial
 const hasUsedFreeTrial = computed(() => {
   const value = userData.value?.has_used_free_trial || false
@@ -278,108 +281,18 @@ const fetchUser = async () => {
   }
 }
 
-// Enhanced verify with exponential backoff
-const verifySubscription = async (maxRetries = 3) => {
-  // Show simple feedback to user
-  snackbarMessage.value = 'Verifying your subscription, please wait...'
-  snackbarColor.value = 'info'
-  snackbar.value = true
-  
-  let attempt = 0
-  
-  while (attempt < maxRetries) {
-    try {
-      const { data, error } = await useApi('/user/subscription/verify')
-      
-      if (error.value) {
-        throw new Error('Verify API failed')
-      }
-      
-      if (data.value.status === 'synced') {
-        console.log('✅ Subscription verified and synced')
-        await fetchUser() // Refresh user data
-        snackbarMessage.value = 'Payment successful! Your subscription is now active.'
-        snackbarColor.value = 'success'
-        snackbar.value = true
-        return true
-      }
-      
-      if (data.value.status === 'pending') {
-        // Webhook might still be processing, wait and retry
-        attempt++
-        const delay = Math.min(1000 * Math.pow(2, attempt), 5000) // Exponential: 2s, 4s, 5s
-        console.log(`⏳ Subscription pending, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`)
-        await new Promise(resolve => setTimeout(resolve, delay))
-        continue
-      }
-      
-      // Other statuses (no_stripe_customer, etc.)
-      console.warn('⚠️ Unexpected verify status:', data.value.status)
-      return false
-      
-    } catch (e) {
-      console.error('Verify error:', e)
-      attempt++
-      if (attempt >= maxRetries) {
-        snackbarMessage.value = 'Payment processed, but subscription sync is delayed. Please refresh the page in a moment.'
-        snackbarColor.value = 'warning'
-        snackbar.value = true
-        return false
-      }
-    }
-  }
-}
 
 onMounted(async () => {
     // Initial fetch to get user data
     await fetchUser()
     
-    // GLOBAL AUTO-TRIGGER: Check for incomplete subscription data
-    // This fixes existing users like User 8 who have incomplete records
-    const user = userData.value
-    const subscription = user?.subscription
-    
-    // Check if subscription exists but is missing ANY critical field
-    const isIncomplete = subscription && (
-        !subscription.starts_at ||
-        !subscription.current_period_end ||
-        !subscription.plan_id ||
-        !subscription.stripe_price
-    )
-    
-    if (user && user.stripe_id && isIncomplete) {
-        console.log('🔧 Detected incomplete subscription, triggering repair...', {
-            has_starts_at: !!subscription.starts_at,
-            has_current_period_end: !!subscription.current_period_end,
-            has_plan_id: !!subscription.plan_id,
-            has_stripe_price: !!subscription.stripe_price,
-        })
-        await verifySubscription() // Repair incomplete data
-    }
-    
-    // Check if returning from Stripe checkout
-    const urlParams = new URLSearchParams(window.location.search)
-    const sessionId = urlParams.get('session_id')
-    const paymentSuccess = urlParams.get('payment') === 'success'
-    
-    // INDESTRUCTIBLE SYNC: Trigger verify if session_id exists (Stripe's default redirect)
-    if (sessionId || paymentSuccess) {
-        console.log('🎉 Stripe checkout detected, verifying subscription...', { sessionId, paymentSuccess })
-        await verifySubscription() // Wait for verification with retry logic
-        // Clean URL after verification
-        window.history.replaceState({}, '', window.location.pathname)
-    }
-    
     // Fetch plans first so we have the Price IDs to compare
     await fetchPlans()
 
-    // ONE-TIME: Smart Toggle Initialization using Strict Price Match
-    // We check if the user's active price ID matches any plan's YEARLY price ID.
-    // If so, we set toggle to Yearly (true). Otherwise, default to Monthly (false).
+    // Smart Toggle Initialization using Strict Price Match
     const userPriceId = userData.value?.subscription?.stripe_price
     if (userPriceId && pricingPlans.value.length > 0) {
         const isYearlyPrice = pricingPlans.value.some(p => p.stripeYearlyPriceId === userPriceId)
-        console.log('🔘 Smart Toggle:', { userPriceId, isYearlyPrice })
         annualMonthlyPlanPriceToggler.value = isYearlyPrice
     } else if (userData.value?.current_subscription_frequency) {
         // Fallback to legacy string check
@@ -406,6 +319,33 @@ onMounted(async () => {
       Choose the best plan to fit your needs.
     </p>
   </div>
+
+  <!-- 👉 Connection Error Banner -->
+  <VAlert
+    v-if="connectionError"
+    type="warning"
+    variant="tonal"
+    closable
+    class="mb-6"
+    @click:close="connectionError = false"
+  >
+    <template #prepend>
+      <VIcon icon="mdi-wifi-off" />
+    </template>
+    <VAlertTitle>Unable to Connect to Server</VAlertTitle>
+    <div>
+      Please check your internet connection and refresh the page to sync your subscription status.
+    </div>
+    <template #append>
+      <VBtn
+        size="small"
+        variant="outlined"
+        @click="location.reload()"
+      >
+        Retry Now
+      </VBtn>
+    </template>
+  </VAlert>
 
   <!-- 👉 Annual and monthly price toggler -->
 

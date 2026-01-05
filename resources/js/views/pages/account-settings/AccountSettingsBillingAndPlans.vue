@@ -83,6 +83,7 @@ const planDetails = computed(() => {
     active_until: summary.expiry_date,
     currency: '£',
     days_remaining: summary.days_remaining || 0,
+    billing_cycle: summary.billing_cycle || 'monthly',
   }
 })
 
@@ -438,7 +439,7 @@ onMounted(() => {
 
                 <div>
                   <h3 class="text-body-1 text-high-emphasis font-weight-medium mb-1">
-                    <span class="me-2">{{ planDetails.currency }}{{ planDetails.plan_price }} Per Month</span>
+                    <span class="me-2">{{ planDetails.currency }}{{ planDetails.plan_price }} {{ planDetails.billing_cycle }}</span>
                     <VChip
                       v-if="planDetails.status === 'active'"
                       color="primary"

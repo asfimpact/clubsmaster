@@ -128,6 +128,7 @@ class StripeController extends Controller
                     ]);
                 }
 
+
                 // Payment method exists - proceed with swap
                 Log::info('Existing subscriber detected - using swap', [
                     'user_id' => $user->id,
@@ -140,9 +141,41 @@ class StripeController extends Controller
                 // Swap to the new price (Cashier handles pro-rating automatically)
                 $subscription->swap($stripePriceId);
 
-                // Update our custom plan_id field (Cashier doesn't know about this)
+                // CRITICAL FIX: Sync plan_id to Stripe Metadata
+                // This prevents "Metadata Drift" where webhooks revert plan_id
+                // because Stripe doesn't know about our internal plan structure
+                try {
+                    $subscription->updateStripeSubscription([
+                        'metadata' => [
+                            'plan_id' => $plan->id,
+                            'user_id' => $user->id,
+                            'frequency' => $request->frequency,
+                        ]
+                    ]);
+
+                    Log::info('✅ Metadata synced to Stripe', [
+                        'stripe_id' => $subscription->stripe_id,
+                        'plan_id' => $plan->id,
+                        'frequency' => $request->frequency,
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error('❌ Failed to sync metadata to Stripe', [
+                        'error' => $e->getMessage(),
+                        'stripe_id' => $subscription->stripe_id,
+                    ]);
+                }
+
+                // Update our custom plan_id field in local database
                 $subscription->update([
                     'plan_id' => $plan->id,
+                ]);
+
+                // DEBUG: Verify the update persisted
+                $subscription->refresh();
+                Log::info('🔍 DEBUG: After local update', [
+                    'subscription_id' => $subscription->id,
+                    'plan_id_in_memory' => $subscription->plan_id,
+                    'plan_id_from_db' => \App\Models\Subscription::find($subscription->id)->plan_id,
                 ]);
 
                 Log::info('Subscription swapped successfully', [
