@@ -300,6 +300,52 @@ onMounted(async () => {
         // Fallback to legacy string check
         annualMonthlyPlanPriceToggler.value = userData.value.current_subscription_frequency === 'yearly'
     }
+    
+    // Check if returning from Stripe Checkout
+    const urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.get('payment') === 'success') {
+        // Show initial feedback
+        snackbarMessage.value = 'Payment successful! Activating your plan...'
+        snackbarColor.value = 'info'
+        snackbar.value = true
+        
+        // Poll for plan activation (every 2 seconds, max 10 seconds)
+        let pollCount = 0
+        const maxPolls = 5 // 10 seconds total
+        
+        const pollInterval = setInterval(async () => {
+            pollCount++
+            
+            const { data } = await useApi('/user')
+            
+            if (data.value?.subscription?.stripe_status === 'active' || 
+                data.value?.subscription?.stripe_status === 'trialing') {
+                // Plan activated!
+                clearInterval(pollInterval)
+                
+                snackbarMessage.value = `Plan activated! Welcome to ${data.value.subscription.plan?.name || 'Premium'}!`
+                snackbarColor.value = 'success'
+                
+                // Refresh all data
+                await Promise.all([
+                    fetchUser(),
+                    fetchPlans()
+                ])
+                
+                // Clean URL
+                window.history.replaceState({}, document.title, window.location.pathname)
+            } else if (pollCount >= maxPolls) {
+                // Timeout - webhook might be slow
+                clearInterval(pollInterval)
+                
+                snackbarMessage.value = 'Plan activation in progress. Please refresh in a moment.'
+                snackbarColor.value = 'warning'
+                
+                // Clean URL anyway
+                window.history.replaceState({}, document.title, window.location.pathname)
+            }
+        }, 2000)
+    }
 })
 </script>
 

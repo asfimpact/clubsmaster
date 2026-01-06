@@ -1,4 +1,47 @@
-#### [2026-01-06] fix: Performance regression and wrong billing labels on toggle
+#### [2026-01-06] improvement: Stripe spinner longer on dashboard for plan activation
+**✨ UX Enhancement:**
+**Issue:** After Stripe checkout, success snackbar appeared immediately but button kept spinning for several seconds, creating confusing UX.
+**Root Cause:**
+- Snackbar showed "Success!" immediately after payment
+- But plan activation requires webhook processing (2-5 seconds)
+- Button spinner continued until webhook completed
+- User saw "Success" but button still loading ❌
+**Solution: Two-Phase Feedback with Polling**
+**Phase 1: Payment Accepted**
+```
+✅ "Payment successful! Activating your plan..."
+→ Blue snackbar (info)
+→ Shows immediately after Stripe redirect
+```
+**Phase 2: Plan Activated**
+```
+✅ "Plan activated! Welcome to [Plan Name]!"
+→ Green snackbar (success)
+→ Shows after webhook completes
+→ Detected via polling every 2 seconds
+```
+**Implementation:**
+- Added polling mechanism in `onMounted`
+- Detects return from Stripe via URL params
+- Polls `/api/user` every 2 seconds (max 10 seconds)
+- Shows accurate status at each phase
+- Cleans URL after completion
+**File Modified:**
+- `resources/js/components/AppPricing.vue`
+  - Added URL param detection for Stripe return
+  - Added polling interval (2s, max 5 polls)
+  - Two-phase snackbar messages
+  - Auto-refresh data after activation
+**Benefits:**
+- ✅ Honest feedback - no premature "Success"
+- ✅ Fast detection - polls every 2s
+- ✅ Graceful timeout - handles slow webhooks
+- ✅ Clean UX - removes URL params after
+- ✅ Industry standard pattern
+**Commit Message:**
+[pending] - improvement: Stripe spinner longer on dashboard for plan activation
+
+#### [2026-01-06] fix: Performance regression and wrong billing labels on toggle and billing page fixes
 **🐛 Critical Bug Fix + Performance:**
 **Issues Fixed:**
 1. **Wrong Labels:** Monthly toggle showing "Per 6 Months" or "Per Year" instead of "Per Month"
@@ -38,7 +81,7 @@
 - After: 1-2 seconds (parallel loading)
 - **3x faster!** 🚀
 **Commit Message:**
-[pending] - fix: performance regression and wrong billing labels on monthly toggle
+[ef7767c] - fix: performance regression and wrong billing labels on monthly toggle
 
 #### [2026-01-06] improvement: Billing label now supports any number of days
 **✨ Enhancement:**
