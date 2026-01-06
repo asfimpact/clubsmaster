@@ -51,7 +51,7 @@ class User extends Authenticatable
      *
      * @var array
      */
-    protected $appends = ['computed_status', 'current_plan', 'current_subscription_frequency', 'subscription_summary'];
+    protected $appends = ['computed_status', 'current_plan', 'current_subscription_frequency', 'subscription_summary', 'access_control'];
 
     /**
      * Get the attributes that should be cast.
@@ -167,12 +167,98 @@ class User extends Authenticatable
     }
 
     /**
-     * Get normalized subscription summary for UI display.
-     * Returns consistent data structure regardless of subscription state.
+     * Get access control information for frontend/mobile apps.
+     * Self-healing: Frontend doesn't calculate, just reads boolean flags.
+     * Android-ready: Clear can_access flag with reason.
+     * 
+     * @return array
      */
-    public function getSubscriptionSummaryAttribute()
+    public function getAccessControlAttribute(): array
     {
-        $subscription = $this->subscription()->first();
+        $subscription = $this->subscription;
+
+        // No subscription
+        if (!$subscription) {
+            return [
+                'can_access' => false,
+                'reason' => 'no_subscription',
+                'status' => 'inactive',
+                'expires_at' => null,
+                'expires_at_unix' => null,
+                'days_remaining' => 0,
+                'is_trial' => false,
+                'is_free' => false,
+                'is_paid' => false,
+                'is_cancelling' => false,
+            ];
+        }
+
+        // Determine access based on subscription status
+        $canAccess = in_array($subscription->stripe_status, ['active', 'free', 'trialing']);
+
+        // Check if subscription is expired
+        if ($subscription->ends_at && $subscription->ends_at->isPast()) {
+            $canAccess = false;
+        }
+
+        // Determine reason
+        $reason = match ($subscription->stripe_status) {
+            'active' => $subscription->onGracePeriod() ? 'cancelling' : 'active',
+            'free' => 'free_plan',
+            'trialing' => 'trial_active',
+            'canceled' => 'expired',
+            default => 'unknown',
+        };
+
+        // Calculate expiry timestamp
+        $expiryDate = match ($subscription->stripe_status) {
+            'free' => $subscription->ends_at,
+            'trialing' => $subscription->trial_ends_at,
+            'active' => $subscription->onGracePeriod()
+            ? $subscription->ends_at
+            : $subscription->current_period_end,
+            default => $subscription->ends_at,
+        };
+
+        // Calculate days remaining
+        $daysRemaining = 0;
+        if ($expiryDate && $expiryDate->isFuture()) {
+            $daysRemaining = (int) max(0, now()->diffInDays($expiryDate, false));
+        }
+
+        return [
+            // Primary access flag (Android uses this)
+            'can_access' => $canAccess,
+
+            // Reason for access status
+            'reason' => $reason,
+
+            // Human-readable status
+            'status' => $canAccess ? 'active' : 'inactive',
+
+            // Expiry information
+            'expires_at' => $expiryDate?->toIso8601String(),
+            'expires_at_unix' => $expiryDate?->timestamp,
+            'days_remaining' => $daysRemaining,
+
+            // Subscription type flags
+            'is_trial' => $subscription->stripe_status === 'trialing',
+            'is_free' => $subscription->stripe_status === 'free',
+            'is_paid' => $subscription->stripe_status === 'active' && !$subscription->onGracePeriod(),
+            'is_cancelling' => $subscription->onGracePeriod(),
+        ];
+    }
+
+    /**
+     * Get normalized subscription summary for UI display.
+     * HYBRID EXPERT MODEL: Supports dual price IDs (monthly + yearly) while using Value Objects.
+     * Returns consistent data structure regardless of subscription state.
+     * 
+     * @return array
+     */
+    public function getSubscriptionSummaryAttribute(): array
+    {
+        $subscription = $this->subscription;
 
         // No active subscription
         if (!$subscription) {
@@ -188,83 +274,70 @@ class User extends Authenticatable
         }
 
         $plan = $subscription->plan;
+
+        // Hybrid Expert Logic: Detect if user is on yearly or monthly billing
+        // by comparing stripe_price with plan's price IDs
+        $isYearly = $plan && $subscription->stripe_price === $plan->stripe_yearly_price_id;
+
+        // Use the appropriate price and billing label based on detection
+        // For yearly: use yearly_price and billing_label (e.g., "Per Year", "Per 6 Months")
+        // For monthly: use price and "Per Month" (or billing_label if plan only has one cycle)
+        $basePrice = $isYearly ? ($plan?->yearly_price ?? 0) : ($plan?->price ?? 0);
+        $billingCycle = $isYearly
+            ? ($plan?->billing_label ?? 'Per Year')
+            : ($plan?->billing_label ?? 'Per Month');
+
+        // Determine status and expiry based on stripe_status
         $status = 'Active';
         $expiryDate = 'N/A';
         $price = 'Free';
-        $billingCycle = null;
+        $daysRemaining = 0;
 
-        // Determine status and expiry based on stripe_status
         if ($subscription->stripe_status === 'free') {
             // Free plan
             $status = 'Active (Free)';
-            $expiryDate = $subscription->ends_at
-                ? $subscription->ends_at->format('M d, Y')
-                : 'N/A';
+            $expiryDate = $subscription->ends_at?->format('M d, Y') ?? 'N/A';
             $price = 'Free';
+
+            if ($subscription->ends_at) {
+                $daysRemaining = (int) max(0, now()->diffInDays($subscription->ends_at, false));
+            }
+
         } elseif ($subscription->stripe_status === 'trialing') {
             // Stripe trial - card collected, will charge after trial
             $status = 'Active (Trial)';
-            $expiryDate = $subscription->trial_ends_at
-                ? $subscription->trial_ends_at->format('M d, Y')
-                : 'N/A';
+            $expiryDate = $subscription->trial_ends_at?->format('M d, Y') ?? 'N/A';
+            $price = '£' . number_format($basePrice, 2) . ' (after trial)';
 
-            // Show the price that will be charged after trial
-            if ($plan && $subscription->stripe_price === $plan->stripe_yearly_price_id) {
-                $price = '£' . $plan->yearly_price . ' (after trial)';
-                $billingCycle = $plan->billing_label;
-            } elseif ($plan && $subscription->stripe_price === $plan->stripe_monthly_price_id) {
-                $price = '£' . $plan->price . ' (after trial)';
-                $billingCycle = 'monthly';
-            } else {
-                $price = $plan ? '£' . $plan->price . ' (after trial)' : 'N/A';
-                $billingCycle = 'monthly';
+            if ($subscription->trial_ends_at) {
+                $daysRemaining = (int) max(0, now()->diffInDays($subscription->trial_ends_at, false));
             }
+
         } elseif ($subscription->onGracePeriod()) {
-            // Canceled but still in grace period (Cashier Native Method)
-            // CHECK THIS BEFORE 'active' because Stripe keeps status='active' during grace period
+            // Canceled but still in grace period
             $status = 'Active (Cancelling)';
-            $expiryDate = $subscription->ends_at ? $subscription->ends_at->format('M d, Y') : 'N/A';
+            $expiryDate = $subscription->ends_at?->format('M d, Y') ?? 'N/A';
+            $price = '£' . number_format($basePrice, 2);
 
-            // Keep showing price during grace period
-            // Compare against actual price IDs instead of string matching
-            if ($plan && $subscription->stripe_price === $plan->stripe_yearly_price_id) {
-                $price = '£' . $plan->yearly_price;
-                $billingCycle = $plan->billing_label; // Smart label from Plan model
-            } elseif ($plan && $subscription->stripe_price === $plan->stripe_monthly_price_id) {
-                $price = '£' . $plan->price;
-                $billingCycle = 'monthly';
-            } else {
-                // Fallback if price ID doesn't match (shouldn't happen)
-                $price = $plan ? '£' . $plan->price : 'N/A';
-                $billingCycle = 'monthly';
+            if ($subscription->ends_at && $subscription->ends_at->isFuture()) {
+                $daysRemaining = (int) max(0, now()->diffInDays($subscription->ends_at, false));
             }
+
         } elseif ($subscription->stripe_status === 'active') {
-            // Active paid subscription (Recurring)
+            // Active paid subscription
             $status = 'Active';
 
-            // Waterfall of Truth: Check current_period_end, then trial_ends_at, then ends_at
             $expiryTimestamp = $subscription->current_period_end
                 ?? $subscription->trial_ends_at
                 ?? $subscription->ends_at;
 
-            $expiryDate = $expiryTimestamp
-                ? $expiryTimestamp->format('M d, Y')
-                : 'Syncing...';
+            $expiryDate = $expiryTimestamp?->format('M d, Y') ?? 'Syncing...';
+            $price = '£' . number_format($basePrice, 2);
 
-            // Determine price and billing cycle from plan
-            // FIXED: Compare against actual price IDs instead of string matching
-            // Uses Plan's smart billing_label accessor for dynamic labels
-            if ($plan && $subscription->stripe_price === $plan->stripe_yearly_price_id) {
-                $price = '£' . $plan->yearly_price;
-                $billingCycle = $plan->billing_label; // Smart label: Per Week, Per 6 Months, etc.
-            } elseif ($plan && $subscription->stripe_price === $plan->stripe_monthly_price_id) {
-                $price = '£' . $plan->price;
-                $billingCycle = 'monthly';
-            } else {
-                // Fallback if price ID doesn't match (shouldn't happen)
-                $price = $plan ? '£' . $plan->price : 'N/A';
-                $billingCycle = 'monthly';
+            if ($subscription->current_period_end) {
+                $daysRemaining = (int) max(0, now()->diffInDays($subscription->current_period_end, false));
             }
+
         } else {
             // Expired or other status
             $status = 'Inactive';
@@ -272,25 +345,9 @@ class User extends Authenticatable
             $price = 'Free';
         }
 
-        // Calculate days remaining (STRICT: as integer)
-        $daysRemaining = 0;
-        if ($subscription->stripe_status === 'free' && $subscription->ends_at) {
-            // Free plan: calculate from ends_at
-            $daysRemaining = (int) max(0, now()->diffInDays($subscription->ends_at, false));
-        } elseif ($subscription->stripe_status === 'trialing' && $subscription->trial_ends_at) {
-            // Trial: calculate from trial_ends_at
-            $daysRemaining = (int) max(0, now()->diffInDays($subscription->trial_ends_at, false));
-        } elseif ($subscription->stripe_status === 'active' && $subscription->current_period_end) {
-            // Paid plan: calculate from current_period_end
-            $daysRemaining = (int) max(0, now()->diffInDays($subscription->current_period_end, false));
-        } elseif ($subscription->stripe_status === 'canceled' && $subscription->ends_at && $subscription->ends_at->isFuture()) {
-            // Canceled but in grace period: calculate from ends_at
-            $daysRemaining = (int) max(0, now()->diffInDays($subscription->ends_at, false));
-        }
-
         return [
             'status' => $status,
-            'plan_name' => $plan ? $plan->name : 'Unknown Plan',
+            'plan_name' => $plan?->name ?? 'Unknown Plan',
             'expiry_date' => $expiryDate,
             'price' => $price,
             'currency' => 'GBP',

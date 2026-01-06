@@ -236,6 +236,8 @@ const fetchPlans = async () => {
                     yearlyPrice: plan.yearly_price ? parseFloat(plan.yearly_price) : (parseFloat(plan.price) * 12),
                     durationDays: plan.duration_days || 30,
                     yearlyDurationDays: plan.yearly_duration_days || 365,
+                    billingLabel: plan.billing_label || '/month',  // Value Object label
+                    periodInfo: plan.period_info || {},  // Value Object metadata
                     isPopular: false,
                     features: Array.isArray(plan.features) ? plan.features : []
                 }

@@ -54,7 +54,28 @@ const countryList = [
   { value: 'JP', title: 'Japan' },
 ]
 
-const userData = useCookie('userData')
+// Fetch user data from API (not cookie)
+const userData = ref(null)
+
+// Fetch user data function
+const fetchUserData = async () => {
+  try {
+    const response = await useApi('/user')  // Don't include /api - useApi adds it automatically
+    
+    // Handle different response structures from useApi
+    if (response.data?.value && typeof response.data.value === 'object') {
+      userData.value = response.data.value
+    } else if (response.data && typeof response.data === 'object') {
+      userData.value = response.data
+    } else {
+      // Invalid response - redirect to login
+      console.error('Invalid API response - please log in again')
+      window.location.href = '/login'
+    }
+  } catch (error) {
+    console.error('Failed to fetch user data:', error)
+  }
+}
 
 // Use subscription_summary from API instead of /user/billing
 const planDetails = computed(() => {
@@ -405,6 +426,7 @@ const resumeSubscription = async (isConfirmed) => {
 }
 
 onMounted(() => {
+    fetchUserData() // Fetch user data from API
     fetchPaymentMethods()
     fetchBillingAddress()
     initializeStripeElements() // Initialize Stripe on page load
