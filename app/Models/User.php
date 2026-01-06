@@ -142,12 +142,13 @@ class User extends Authenticatable
     /**
      * Get the user's subscription (for eager loading).
      * Always returns the LATEST active subscription to prevent "zombie" subscriptions.
+     * Supports: active paid plans, free plans, and Stripe trials.
      */
     public function subscription()
     {
         return $this->hasOne(Subscription::class)
             ->where('type', 'default')
-            ->whereIn('stripe_status', ['active', 'free'])
+            ->whereIn('stripe_status', ['active', 'free', 'trialing'])
             ->where(function ($query) {
                 $query->whereNull('ends_at')
                     ->orWhere('ends_at', '>', now());
@@ -200,6 +201,24 @@ class User extends Authenticatable
                 ? $subscription->ends_at->format('M d, Y')
                 : 'N/A';
             $price = 'Free';
+        } elseif ($subscription->stripe_status === 'trialing') {
+            // Stripe trial - card collected, will charge after trial
+            $status = 'Active (Trial)';
+            $expiryDate = $subscription->trial_ends_at
+                ? $subscription->trial_ends_at->format('M d, Y')
+                : 'N/A';
+
+            // Show the price that will be charged after trial
+            if ($plan && $subscription->stripe_price === $plan->stripe_yearly_price_id) {
+                $price = '£' . $plan->yearly_price . ' (after trial)';
+                $billingCycle = $plan->billing_label;
+            } elseif ($plan && $subscription->stripe_price === $plan->stripe_monthly_price_id) {
+                $price = '£' . $plan->price . ' (after trial)';
+                $billingCycle = 'monthly';
+            } else {
+                $price = $plan ? '£' . $plan->price . ' (after trial)' : 'N/A';
+                $billingCycle = 'monthly';
+            }
         } elseif ($subscription->onGracePeriod()) {
             // Canceled but still in grace period (Cashier Native Method)
             // CHECK THIS BEFORE 'active' because Stripe keeps status='active' during grace period
@@ -258,6 +277,9 @@ class User extends Authenticatable
         if ($subscription->stripe_status === 'free' && $subscription->ends_at) {
             // Free plan: calculate from ends_at
             $daysRemaining = (int) max(0, now()->diffInDays($subscription->ends_at, false));
+        } elseif ($subscription->stripe_status === 'trialing' && $subscription->trial_ends_at) {
+            // Trial: calculate from trial_ends_at
+            $daysRemaining = (int) max(0, now()->diffInDays($subscription->trial_ends_at, false));
         } elseif ($subscription->stripe_status === 'active' && $subscription->current_period_end) {
             // Paid plan: calculate from current_period_end
             $daysRemaining = (int) max(0, now()->diffInDays($subscription->current_period_end, false));

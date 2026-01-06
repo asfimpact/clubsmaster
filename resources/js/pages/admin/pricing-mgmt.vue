@@ -28,6 +28,7 @@ const headers = [
   { title: 'PLAN NAME', key: 'name' },
   { title: 'PRICE', key: 'price' },
   { title: 'DURATION (DAYS)', key: 'duration_days' },
+  { title: 'STATUS', key: 'is_enabled' },
   { title: 'CREATED', key: 'created_at' },
   { title: 'ACTIONS', key: 'actions', sortable: false },
 ]
@@ -63,7 +64,8 @@ const openPlanDialog = (plan = null) => {
         stripe_yearly_price_id: '', 
         duration_days: 30, 
         yearly_duration_days: 365,
-        features: '' 
+        features: '',
+        is_enabled: true
     }
   }
   isPlanDialogVisible.value = true
@@ -135,6 +137,16 @@ onMounted(fetchPlans)
           <!-- Created At -->
           <template #item.created_at="{ item }">
             {{ new Date(item.created_at).toLocaleDateString() }}
+          </template>
+
+          <!-- Status -->
+          <template #item.is_enabled="{ item }">
+            <VChip
+              :color="item.is_enabled ? 'success' : 'error'"
+              size="small"
+            >
+              {{ item.is_enabled ? 'Enabled' : 'Disabled' }}
+            </VChip>
           </template>
 
           <!-- Actions -->
@@ -223,6 +235,14 @@ onMounted(fetchPlans)
                 label="Plan Features (One per line)"
                 placeholder="Unlimited Projects&#10;Primary Support&#10;5GB Storage"
                 rows="4"
+              />
+            </VCol>
+            <VCol cols="12">
+              <VSwitch
+                v-model="planForm.is_enabled"
+                label="Enable this plan (visible to users)"
+                color="success"
+                hide-details
               />
             </VCol>
           </VRow>

@@ -31,6 +31,7 @@ class PlanController extends Controller
             'duration_days' => 'required|integer|min:1',
             'yearly_duration_days' => 'nullable|integer|min:1',
             'features' => 'nullable|string', // Expecting new-line separated string
+            'is_enabled' => 'nullable|boolean',
         ]);
 
         $data = $request->all();
@@ -69,6 +70,7 @@ class PlanController extends Controller
             'duration_days' => 'required|integer|min:1',
             'yearly_duration_days' => 'nullable|integer|min:1',
             'features' => 'nullable|string',
+            'is_enabled' => 'nullable|boolean',
         ]);
 
         $data = $request->all();

@@ -10,6 +10,7 @@ class PlanController extends Controller
 {
     public function index()
     {
-        return response()->json(Plan::all());
+        // Only show enabled plans to users (admins see all plans in admin panel)
+        return response()->json(Plan::enabled()->get());
     }
 }

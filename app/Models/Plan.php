@@ -15,7 +15,8 @@ class Plan extends Model
         'stripe_yearly_price_id',
         'features',
         'duration_days',
-        'yearly_duration_days'
+        'yearly_duration_days',
+        'is_enabled'
     ];
 
     protected $casts = [
@@ -23,6 +24,7 @@ class Plan extends Model
         'price' => 'decimal:2',
         'yearly_price' => 'decimal:2',
         'yearly_duration_days' => 'integer',
+        'is_enabled' => 'boolean',
     ];
 
     /**
@@ -43,6 +45,15 @@ class Plan extends Model
             365 => 'Per Year',
             default => 'Per Period',
         };
+    }
+
+    /**
+     * Scope to filter only enabled plans.
+     * Used to hide disabled plans from user-facing endpoints.
+     */
+    public function scopeEnabled($query)
+    {
+        return $query->where('is_enabled', true);
     }
 
     public function subscriptions()

@@ -1,3 +1,58 @@
+#### [2026-01-06] Plan Visibility Control & Stripe Trial Support Implementation
+**🎯 Features Implemented:**
+**1. Plan Enable/Disable Feature**
+- Added `is_enabled` boolean column to `plans` table (default: `true`)
+- Admins can now hide plans from frontend without deleting them
+- Disabled plans remain in database for historical data and reporting
+**Backend Changes:**
+- **Migration:** `2026_01_06_033904_add_is_enabled_to_plans_table.php`
+  - Added `is_enabled` column after `yearly_duration_days`
+- **Plan Model:** `app/Models/Plan.php`
+  - Added `is_enabled` to `$fillable` and `$casts`
+  - Added `scopeEnabled()` method for filtering enabled plans
+- **Admin PlanController:** `app/Http/Controllers/Admin/PlanController.php`
+  - Added `is_enabled` validation to `store()` and `update()` methods
+- **User PlanController:** `app/Http/Controllers/User/PlanController.php`
+  - Updated `index()` to return only enabled plans: `Plan::enabled()->get()`
+  - Admins still see all plans in admin panel
+**Frontend Changes:**
+- **Admin UI:** `resources/js/pages/admin/pricing-mgmt.vue`
+  - Added "STATUS" column with color-coded chips (green "Enabled" / red "Disabled")
+  - Added toggle switch in plan dialog form
+  - Added `is_enabled: true` to default form values
+**2. Stripe Trial Support**
+- System now ready for Stripe free trials with card collection upfront
+- No code changes needed when configuring Stripe trials in the future
+**Backend Changes:**
+- **User Model:** `app/Models/User.php`
+  - Updated `subscription()` relationship to include `'trialing'` status
+  - Now supports: `['active', 'free', 'trialing']`
+  - Added trial status handling in `getSubscriptionSummaryAttribute()`
+    - Status: `'Active (Trial)'`
+    - Expiry from: `trial_ends_at`
+    - Price shown as: `'£X.XX (after trial)'`
+  - Added trial days remaining calculation from `trial_ends_at`
+**Status Matrix Update:**
+| Subscription Status | `stripe_status` | Display Status | Expiry Source | Access |
+|---------------------|----------------|----------------|---------------|--------|
+| Free Plan Active | `free` | Active (Free) | `ends_at` | ✅ Allow |
+| **Trial Active** | **`trialing`** | **Active (Trial)** | **`trial_ends_at`** | ✅ **Allow** |
+| Paid Active | `active` | Active | `current_period_end` | ✅ Allow |
+| Cancelled (Grace) | `active` | Active (Cancelling) | `ends_at` | ✅ Allow |
+| Expired | `canceled` | Inactive | Past date | ❌ Block |
+**Files Modified:**
+- `database/migrations/2026_01_06_033904_add_is_enabled_to_plans_table.php` (NEW)
+- `app/Models/Plan.php`
+- `app/Http/Controllers/Admin/PlanController.php`
+- `app/Http/Controllers/User/PlanController.php`
+- `app/Models/User.php`
+- `resources/js/pages/admin/pricing-mgmt.vue`
+**Documentation:**
+- `.agent/analysis/01-subscription-payment-workflow-analysis.md` - Complete system analysis
+- `.agent/implementation/02-plan-visibility-stripe-trials.md` - Implementation details
+**Commit Message:**
+[pending] - feat: implement plan visibility control and Stripe trial support
+
 #### [2026-01-05] Remove redundant sync code and fix metadata drift bug & other UI payments info display fixes
 - **StripeController.php**
 Changes:
@@ -45,7 +100,7 @@ Changes:
 4. `resources/js/components/AppPricing.vue`
 5. `app/Models/Plan.php`
 **Commit message**
-[pending] - Remove redundant sync code and fix metadata drift bug & other UI payments info display fixes
+[ee78874] - Remove redundant sync code and fix metadata drift bug & other UI payments info display fixes
 
 #### [04-01-2026] feat: Implement Indestructible Payment Sync with Webhook Failure Recovery
 - Task: Indestructible Payment Sync
