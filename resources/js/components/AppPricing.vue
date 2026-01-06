@@ -285,11 +285,11 @@ const fetchUser = async () => {
 
 
 onMounted(async () => {
-    // Initial fetch to get user data
-    await fetchUser()
-    
-    // Fetch plans first so we have the Price IDs to compare
-    await fetchPlans()
+    // Fire both requests in parallel for faster loading
+    await Promise.all([
+        fetchUser(),
+        fetchPlans()
+    ])
 
     // Smart Toggle Initialization using Strict Price Match
     const userPriceId = userData.value?.subscription?.stripe_price
@@ -300,11 +300,6 @@ onMounted(async () => {
         // Fallback to legacy string check
         annualMonthlyPlanPriceToggler.value = userData.value.current_subscription_frequency === 'yearly'
     }
-    
-    // Second pulse: Fetch again after 3 seconds to catch any delayed webhook updates
-    setTimeout(() => {
-        fetchUser()
-    }, 3000)
 })
 </script>
 

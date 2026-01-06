@@ -79,15 +79,30 @@ const fetchUserData = async () => {
 
 // Use subscription_summary from API instead of /user/billing
 const planDetails = computed(() => {
-  const summary = userData.value?.subscription_summary
-  
-  if (!summary) {
+  // If userData hasn't loaded yet, show loading
+  // But if userData exists and has no subscription, show "No Active Plan"
+  if (!userData.value) {
     return {
       plan_name: 'Loading...',
       plan_price: '0',
       status: 'inactive',
       active_until: 'N/A',
       currency: '£',
+    }
+  }
+  
+  const summary = userData.value.subscription_summary
+  
+  // If userData loaded but no subscription, show proper "No Active Plan"
+  if (!summary || summary.status === 'Inactive') {
+    return {
+      plan_name: summary?.plan_name || 'No Active Plan',
+      plan_price: '0',
+      status: 'inactive',
+      active_until: 'N/A',
+      currency: '£',
+      days_remaining: 0,
+      billing_cycle: null,
     }
   }
 
@@ -109,6 +124,10 @@ const planDetails = computed(() => {
     currency: '£',
     days_remaining: summary.days_remaining || 0,
     billing_cycle: summary.billing_cycle || null,  // Don't default to 'monthly' - null is correct for no subscription
+    // Progress bar calculations (use total_days from backend)
+    total_days: summary.total_days || 30,
+    days_consumed: Math.max(0, (summary.total_days || 30) - (summary.days_remaining || 0)),
+    progress_percent: Math.min(100, Math.max(0, (((summary.total_days || 30) - (summary.days_remaining || 0)) / (summary.total_days || 30)) * 100)),
   }
 })
 
@@ -425,11 +444,18 @@ const resumeSubscription = async (isConfirmed) => {
   }
 }
 
-onMounted(() => {
-    fetchUserData() // Fetch user data from API
-    fetchPaymentMethods()
-    fetchBillingAddress()
-    initializeStripeElements() // Initialize Stripe on page load
+onMounted(async () => {
+    // Fire all data requests in parallel for faster loading
+    Promise.all([
+        fetchUserData(),
+        fetchPaymentMethods(),
+        fetchBillingAddress()
+    ])
+    
+    // Initialize Stripe separately so it doesn't block UI data
+    setTimeout(() => {
+        initializeStripeElements()
+    }, 500)
 })
 </script>
 

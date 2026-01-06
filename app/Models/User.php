@@ -281,11 +281,11 @@ class User extends Authenticatable
 
         // Use the appropriate price and billing label based on detection
         // For yearly: use yearly_price and billing_label (e.g., "Per Year", "Per 6 Months")
-        // For monthly: use price and "Per Month" (or billing_label if plan only has one cycle)
+        // For monthly: always use "Per Month" (toggle is simple: monthly vs yearly)
         $basePrice = $isYearly ? ($plan?->yearly_price ?? 0) : ($plan?->price ?? 0);
         $billingCycle = $isYearly
             ? ($plan?->billing_label ?? 'Per Year')
-            : ($plan?->billing_label ?? 'Per Month');
+            : 'Per Month';  // Hardcoded for monthly toggle
 
         // Determine status and expiry based on stripe_status
         $status = 'Active';
@@ -345,6 +345,13 @@ class User extends Authenticatable
             $price = 'Free';
         }
 
+        // Calculate total days for progress bar
+        // For free plans, use duration_days; for paid, use 30 (monthly default)
+        $totalDays = 30; // Default monthly
+        if ($subscription->stripe_status === 'free' && $plan) {
+            $totalDays = $plan->duration_days ?? 30;
+        }
+
         return [
             'status' => $status,
             'plan_name' => $plan?->name ?? 'Unknown Plan',
@@ -353,6 +360,7 @@ class User extends Authenticatable
             'currency' => 'GBP',
             'billing_cycle' => $billingCycle,
             'days_remaining' => $daysRemaining,
+            'total_days' => $totalDays,  // For progress bar
         ];
     }
 
