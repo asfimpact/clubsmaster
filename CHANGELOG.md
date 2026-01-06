@@ -1,3 +1,32 @@
+#### [2026-01-06] Fix: Cancel Subscription button showing for users with no subscription
+**🐛 Bug Fix:**
+**Issue:** Cancel Subscription button was visible for users with no active subscription due to substring matching bug.
+**Root Cause:**
+- Backend returns status: `'Inactive'` for users with no subscription
+- Frontend used `.includes('active')` to check status
+- Bug: `'inactive'.includes('active')` returns `true` (substring match)
+- Result: Status incorrectly set to `'active'` → Cancel button visible
+**Fix:**
+- Changed from `.includes('active')` to `.startsWith('active')`
+- Now correctly distinguishes between:
+  - `'Inactive'` → `status: 'inactive'` → Cancel button hidden ✅
+  - `'Active'` → `status: 'active'` → Cancel button visible ✅
+  - `'Active (Free)'` → `status: 'active'` → Cancel button visible ✅
+  - `'Active (Trial)'` → `status: 'active'` → Cancel button visible ✅
+  - `'Active (Cancelling)'` → `status: 'cancelling'` → Resume button visible ✅
+**Files Modified:**
+- `resources/js/views/pages/account-settings/AccountSettingsBillingAndPlans.vue`
+  - Line 82-86: Changed status detection logic from substring match to prefix match
+  - Line 90: Changed `billing_cycle` default from `'monthly'` to `null` (no subscription shouldn't show billing cycle)
+  - Line 446-448: Added conditional rendering for `billing_cycle` to avoid showing null/empty text
+**Testing:**
+- ✅ No subscription → Cancel button hidden, no "monthly" text shown
+- ✅ Free plan active → Cancel button visible
+- ✅ Paid plan active → Cancel button visible
+- ✅ Cancelled (grace) → Resume button visible (Cancel hidden)
+**Commit Message:**
+[pending] - fix: cancel subscription button showing for no-subscription users due to substring matching
+
 #### [2026-01-06] Plan Visibility Control & Stripe Trial Support Implementation
 **🎯 Features Implemented:**
 **1. Plan Enable/Disable Feature**

@@ -79,11 +79,15 @@ const planDetails = computed(() => {
   return {
     plan_name: summary.plan_name,
     plan_price: numericPrice,
-    status: summary.status.toLowerCase().includes('cancelling') ? 'cancelling' : (summary.status.toLowerCase().includes('active') ? 'active' : 'inactive'),
+    // Fixed: Check for 'cancelling' first, then check if status starts with 'Active' (not contains)
+    // This prevents 'Inactive' from being detected as 'active' due to substring matching
+    status: summary.status.toLowerCase().includes('cancelling') 
+      ? 'cancelling' 
+      : (summary.status.toLowerCase().startsWith('active') ? 'active' : 'inactive'),
     active_until: summary.expiry_date,
     currency: '£',
     days_remaining: summary.days_remaining || 0,
-    billing_cycle: summary.billing_cycle || 'monthly',
+    billing_cycle: summary.billing_cycle || null,  // Don't default to 'monthly' - null is correct for no subscription
   }
 })
 
@@ -439,7 +443,10 @@ onMounted(() => {
 
                 <div>
                   <h3 class="text-body-1 text-high-emphasis font-weight-medium mb-1">
-                    <span class="me-2">{{ planDetails.currency }}{{ planDetails.plan_price }} {{ planDetails.billing_cycle }}</span>
+                    <span class="me-2">
+                      {{ planDetails.currency }}{{ planDetails.plan_price }}
+                      <span v-if="planDetails.billing_cycle"> {{ planDetails.billing_cycle }}</span>
+                    </span>
                     <VChip
                       v-if="planDetails.status === 'active'"
                       color="primary"
