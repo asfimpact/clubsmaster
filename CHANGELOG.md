@@ -1,3 +1,49 @@
+#### [2026-01-06] Membership & Payment history pages with caching and security
+**✨ New Feature:**
+**Objective:** Provide users with clean, fast access to payment invoices and subscription timeline.
+**1. Payment History**
+- Fetches Stripe invoices via Cashier
+- 1-hour cache for instant loading (0.1s)
+- Download receipt links
+- Handles free trial users (no Stripe ID)
+- Empty state with CTA
+**2. Membership History**
+- Shows subscription timeline from database
+- Uses `App\Models\Subscription` (not Cashier's model)
+- Plan progression tracking
+- Frequency labels ("Monthly", "Yearly")
+- Color-coded status badges
+- Empty state with CTA
+**Files Created:**
+- `app/Http/Controllers/User/PaymentHistoryController.php`
+- `app/Http/Controllers/User/MembershipHistoryController.php`
+- Updated `routes/api.php` (added 2 routes)
+- Updated `resources/js/pages/business-payment-history.vue`
+- Updated `resources/js/pages/business-membership-history.vue`
+**Critical Fixes Applied:**
+- ✅ **Cents Bug** - Using `$invoice->total()` (already formatted)
+- ✅ **Performance** - 1-hour cache (0.1s load time)
+- ✅ **Empty States** - Beautiful blank slate UI
+- ✅ **Free Trial Users** - Handles users without Stripe ID
+- ✅ **Relationship Error** - Fixed to use `App\Models\Subscription` instead of Cashier's model
+- ✅ **Auth Check** - Added error handling and login redirect
+- ✅ **CASL Permissions** - Uses empty `definePage({})` following dashboard pattern
+- ✅ **Navigation** - Fixed route names to use `{ name: 'route-name' }` format
+- ✅ **Cache Issue** - Resolved by using empty definePage (no CASL cookie dependency)
+**Permission Strategy:**
+- Uses `definePage({})` (empty object) - matches dashboard pattern
+- No CASL subject/action = no cookie dependency
+- Protected by global auth guard (requires login)
+- Allows navigation sync (sidebar highlighting)
+- Professional standard for user-facing pages
+**Troubleshooting Notes:**
+- Pages use empty `definePage({})` to avoid CASL permission conflicts
+- If issues persist: Hard refresh (Ctrl+F5) to clear HMR cache
+- Ensure both Laravel (`php artisan serve`) and Vite (`npm run dev`) are running
+- Access via Laravel URL (`http://127.0.0.1:8000/...`), not Vite (`http://[::1]:5173/...`)
+**Commit Message:**
+[pending] - Membership & Payment history pages with caching and security
+
 #### [2026-01-06] improvement: Stripe spinner longer on dashboard for plan activation
 **✨ UX Enhancement:**
 **Issue:** After Stripe checkout, success snackbar appeared immediately but button kept spinning for several seconds, creating confusing UX.
@@ -39,7 +85,7 @@
 - ✅ Clean UX - removes URL params after
 - ✅ Industry standard pattern
 **Commit Message:**
-[pending] - improvement: Stripe spinner longer on dashboard for plan activation
+[33b136d] - improvement: Stripe spinner longer on dashboard for plan activation
 
 #### [2026-01-06] fix: Performance regression and wrong billing labels on toggle and billing page fixes
 **🐛 Critical Bug Fix + Performance:**

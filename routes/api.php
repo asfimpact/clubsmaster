@@ -26,6 +26,10 @@ Route::middleware('auth:sanctum')->get('/user/subscription/verify', [\App\Http\C
 Route::middleware('auth:sanctum')->post('/user/subscription/cancel', [\App\Http\Controllers\User\SubscriptionController::class, 'cancel']);
 Route::middleware('auth:sanctum')->post('/user/subscription/resume', [\App\Http\Controllers\User\SubscriptionController::class, 'resume']);
 
+// Payment & Membership History
+Route::middleware('auth:sanctum')->get('/user/payment-history', [\App\Http\Controllers\User\PaymentHistoryController::class, 'index']);
+Route::middleware('auth:sanctum')->get('/user/membership-history', [\App\Http\Controllers\User\MembershipHistoryController::class, 'index']);
+
 // Stripe Checkout
 Route::middleware('auth:sanctum')->post('/stripe/checkout', [\App\Http\Controllers\StripeController::class, 'checkout']);
 
