@@ -1,42 +1,32 @@
 <script setup>
-import avatar1 from '@images/avatars/avatar-1.png'
-
 // 1. Get user data from cookie
 const userData = useCookie('userData')
 
-// 2. Initialize local state from cookie (safe clone)
-// We split FullName back to First/Last for editing if needed, 
-// BUT simpler is to rely on what backend gives or just ask user to edit First/Last separately if we have them.
-// The userData cookie usually has 'fullName'. 
-// Let's assume we want to edit First/Last names. 
-// If the cookie only has 'fullName', we might need to fetch the detailed 'user' object from /api/user to get first/last.
-// However, looking at AuthController logic, we return `userData` with `fullName`.
-// We should probably fetch the FRESH user details on mount to be safe and get first_name/last_name.
-// OR, we can just split fullName for now if we are lazy, but that's risky.
-
-// Better approach: Fetch /api/user on mount to fill the form.
+// 2. Initialize local state from cookie (instant display!)
 const accountDataLocal = ref({
-  first_name: '',
-  last_name: '',
-  email: '',
-  phone: '',
-  avatarImg: avatar1, 
+  first_name: userData.value?.first_name || '',
+  last_name: userData.value?.last_name || '',
+  email: userData.value?.email || '',
+  phone: userData.value?.phone || '',
 })
 
 const isConfirmDialogOpen = ref(false)
 const isAccountDeactivated = ref(false)
 const validateAccountDeactivation = [v => !!v || 'Please confirm account deactivation']
 
-// Fetch fresh data
+// Fetch fresh data in background
 const fetchUser = async () => {
   try {
-    const { data } = await useApi('/user') // This route exists in api.php and returns $request->user()
+    const { data } = await useApi('/user')
     if (data.value) {
-        accountDataLocal.value.first_name = data.value.first_name
-        accountDataLocal.value.last_name = data.value.last_name
-        accountDataLocal.value.email = data.value.email
-        accountDataLocal.value.phone = data.value.phone || data.value.mobile // handle both keys if any
-        // accountDataLocal.value.avatarImg = data.value.avatar // if we had one
+      // Update local form
+      accountDataLocal.value.first_name = data.value.first_name
+      accountDataLocal.value.last_name = data.value.last_name
+      accountDataLocal.value.email = data.value.email
+      accountDataLocal.value.phone = data.value.phone || ''
+      
+      // Sync cookie to keep everything consistent
+      userData.value = data.value
     }
   } catch (e) {
     console.error("Failed to fetch user", e)
@@ -44,50 +34,35 @@ const fetchUser = async () => {
 }
 
 onMounted(() => {
-    fetchUser()
+  // Fetch fresh data in background (form already shows cookie data)
+  fetchUser()
 })
 
-const changeAvatar = file => {
-  const fileReader = new FileReader()
-  const { files } = file.target
-  if (files && files.length) {
-    fileReader.readAsDataURL(files[0])
-    fileReader.onload = () => {
-      if (typeof fileReader.result === 'string')
-        accountDataLocal.value.avatarImg = fileReader.result
+const saveChanges = async () => {
+  try {
+    const res = await $api('/auth/profile-update', {
+      method: 'POST',
+      body: {
+        first_name: accountDataLocal.value.first_name,
+        last_name: accountDataLocal.value.last_name,
+        phone: accountDataLocal.value.phone,
+      }
+    })
+    
+    // Update cookie with new data
+    if (res.userData) {
+      userData.value = res.userData
     }
+    
+    alert('Profile updated successfully')
+  } catch (e) {
+    console.error(e)
+    alert('Failed to update profile')
   }
 }
 
-const resetAvatar = () => {
-  accountDataLocal.value.avatarImg = avatar1
-}
-
-const saveChanges = async () => {
-    try {
-        const res = await $api('/auth/profile-update', {
-            method: 'POST',
-            body: {
-                first_name: accountDataLocal.value.first_name,
-                last_name: accountDataLocal.value.last_name,
-                phone: accountDataLocal.value.phone,
-            }
-        })
-        
-        // Update cookie with new display data
-        if (res.userData) {
-            userData.value = res.userData
-        }
-        
-        alert('Profile updated successfully') // Simple alert for now, can be snackbar
-    } catch (e) {
-        console.error(e)
-        alert('Failed to update profile')
-    }
-}
-
 const resetForm = () => {
-  fetchUser() // Just re-fetch
+  fetchUser() // Re-fetch to reset
 }
 </script>
 
@@ -95,60 +70,6 @@ const resetForm = () => {
   <VRow>
     <VCol cols="12">
       <VCard title="Profile Details">
-        <VCardText class="d-flex">
-          <!-- 👉 Avatar -->
-          <VAvatar
-            rounded
-            size="100"
-            class="me-6"
-            :image="accountDataLocal.avatarImg"
-          />
-
-          <!-- 👉 Upload Photo -->
-          <form class="d-flex flex-column justify-center gap-4">
-            <div class="d-flex flex-wrap gap-4">
-              <VBtn
-                color="primary"
-                size="small"
-                @click="refInputEl?.click()"
-              >
-                <VIcon
-                  icon="tabler-cloud-upload"
-                  class="d-sm-none"
-                />
-                <span class="d-none d-sm-block">Upload new photo</span>
-              </VBtn>
-
-              <input
-                ref="refInputEl"
-                type="file"
-                name="file"
-                accept=".jpeg,.png,.jpg,GIF"
-                hidden
-                @input="changeAvatar"
-              >
-
-              <VBtn
-                type="reset"
-                size="small"
-                color="secondary"
-                variant="tonal"
-                @click="resetAvatar"
-              >
-                <span class="d-none d-sm-block">Reset</span>
-                <VIcon
-                  icon="tabler-refresh"
-                  class="d-sm-none"
-                />
-              </VBtn>
-            </div>
-
-            <p class="text-body-1 mb-0">
-              Allowed JPG, GIF or PNG. Max size of 800K
-            </p>
-          </form>
-        </VCardText>
-
         <VCardText class="pt-2">
           <!-- 👉 Form -->
           <VForm class="mt-3" @submit.prevent="saveChanges">
@@ -227,7 +148,7 @@ const resetForm = () => {
 
     <VCol cols="12">
       <!-- 👉 Delete Account -->
-      <VCard title="Delete Account">
+      <VCard title="Delete Account - Coming soon">
         <VCardText>
           <!-- 👉 Checkbox and Button  -->
           <div>

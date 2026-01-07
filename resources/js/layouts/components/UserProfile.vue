@@ -46,10 +46,6 @@ const userProfileList = [
       name: 'pages-account-settings-tab',
       params: { tab: 'billing-plans' },
     },
-    badgeProps: {
-      color: 'error',
-      content: '4',
-    },
   },
   { type: 'divider' },
   {
@@ -57,12 +53,6 @@ const userProfileList = [
     icon: 'tabler-currency-dollar',
     title: 'Pricing',
     to: { name: 'pages-pricing' },
-  },
-  {
-    type: 'navItem',
-    icon: 'tabler-question-mark',
-    title: 'FAQ',
-    to: { name: 'pages-faq' },
   },
 ]
 </script>
@@ -129,10 +119,10 @@ const userProfileList = [
 
               <div>
                 <h6 class="text-h6 font-weight-medium">
-                  {{ userData.fullName || userData.username }}
+                  {{ userData.first_name || userData.username || 'User' }}
                 </h6>
                 <div class="d-flex flex-column">
-                  <span class="text-caption text-disabled mb-1">{{ userData.mobile }}</span>
+                  <span v-if="userData.phone" class="text-caption text-disabled mb-1">{{ userData.phone }}</span>
                   <VListItemSubtitle class="text-capitalize text-disabled">
                     {{ userData.role }}
                   </VListItemSubtitle>
@@ -158,17 +148,6 @@ const userProfileList = [
                 </template>
 
                 <VListItemTitle>{{ item.title }}</VListItemTitle>
-
-                <template
-                  v-if="item.badgeProps"
-                  #append
-                >
-                  <VBadge
-                    rounded="sm"
-                    class="me-3"
-                    v-bind="item.badgeProps"
-                  />
-                </template>
               </VListItem>
 
               <VDivider

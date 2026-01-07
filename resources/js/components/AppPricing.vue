@@ -350,93 +350,95 @@ onMounted(async () => {
 </script>
 
 <template>
-  <!-- 👉 Title and subtitle -->
-  <div class="text-center">
-    <h3 class="text-h3 pricing-title mb-2">
-      {{ props.title ? props.title : 'Pricing Plans' }}
-    </h3>
-    <p class="mb-0">
-      All plans include 40+ advanced tools and features to boost your product.
-    </p>
-    <p class="mb-2">
-      Choose the best plan to fit your needs.
-    </p>
-  </div>
-
-  <!-- 👉 Connection Error Banner -->
-  <VAlert
-    v-if="connectionError"
-    type="warning"
-    variant="tonal"
-    closable
-    class="mb-6"
-    @click:close="connectionError = false"
-  >
-    <template #prepend>
-      <VIcon icon="mdi-wifi-off" />
-    </template>
-    <VAlertTitle>Unable to Connect to Server</VAlertTitle>
-    <div>
-      Please check your internet connection and refresh the page to sync your subscription status.
-    </div>
-    <template #append>
-      <VBtn
-        size="small"
-        variant="outlined"
-        @click="location.reload()"
-      >
-        Retry Now
-      </VBtn>
-    </template>
-  </VAlert>
-
-  <!-- 👉 Annual and monthly price toggler -->
-
-  <div class="d-flex font-weight-medium text-body-1 align-center justify-center mx-auto mt-12 mb-6">
-    <VLabel
-      for="pricing-plan-toggle"
-      class="me-3"
-    >
-      Monthly
-    </VLabel>
-
-    <div class="position-relative">
-      <VSwitch
-        id="pricing-plan-toggle"
-        v-model="annualMonthlyPlanPriceToggler"
-      >
-        <template #label>
-          <div class="text-body-1 font-weight-medium">
-            Annually
-          </div>
-        </template>
-      </VSwitch>
-
-      <div class="save-upto-chip position-absolute align-center d-none d-md-flex gap-1">
-        <VIcon
-          icon="tabler-corner-left-down"
-          size="24"
-          class="flip-in-rtl mt-2 text-disabled"
-        />
-        <VChip
-          label
-          color="primary"
-          size="small"
-        >
-          Save up to 30%
-        </VChip>
+  <Transition name="fade">
+    <div v-if="pricingPlans.length > 0">
+      <!-- 👉 Title and subtitle -->
+      <div class="text-center">
+        <h3 class="text-h3 pricing-title mb-2">
+          {{ props.title ? props.title : 'Pricing Plans' }}
+        </h3>
+        <p class="mb-0">
+          All plans include 40+ advanced tools and features to boost your product.
+        </p>
+        <p class="mb-2">
+          Choose the best plan to fit your needs.
+        </p>
       </div>
-    </div>
-  </div>
 
-  <!-- SECTION pricing plans -->
-  <VRow>
-    <VCol
-      v-for="plan in pricingPlans"
-      :key="plan.logo"
-      v-bind="props"
-      cols="12"
-    >
+      <!-- 👉 Connection Error Banner -->
+      <VAlert
+        v-if="connectionError"
+        type="warning"
+        variant="tonal"
+        closable
+        class="mb-6"
+        @click:close="connectionError = false"
+      >
+        <template #prepend>
+          <VIcon icon="mdi-wifi-off" />
+        </template>
+        <VAlertTitle>Unable to Connect to Server</VAlertTitle>
+        <div>
+          Please check your internet connection and refresh the page to sync your subscription status.
+        </div>
+        <template #append>
+          <VBtn
+            size="small"
+            variant="outlined"
+            @click="location.reload()"
+          >
+            Retry Now
+          </VBtn>
+        </template>
+      </VAlert>
+
+      <!-- 👉 Annual and monthly price toggler -->
+
+      <div class="d-flex font-weight-medium text-body-1 align-center justify-center mx-auto mt-12 mb-6">
+        <VLabel
+          for="pricing-plan-toggle"
+          class="me-3"
+        >
+          Monthly
+        </VLabel>
+
+        <div class="position-relative">
+          <VSwitch
+            id="pricing-plan-toggle"
+            v-model="annualMonthlyPlanPriceToggler"
+          >
+            <template #label>
+              <div class="text-body-1 font-weight-medium">
+                Annually
+              </div>
+            </template>
+          </VSwitch>
+
+          <div class="save-upto-chip position-absolute align-center d-none d-md-flex gap-1">
+            <VIcon
+              icon="tabler-corner-left-down"
+              size="24"
+              class="flip-in-rtl mt-2 text-disabled"
+            />
+            <VChip
+              label
+              color="primary"
+              size="small"
+            >
+              Save up to 30%
+            </VChip>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION pricing plans -->
+      <VRow>
+        <VCol
+          v-for="plan in pricingPlans"
+          :key="plan.logo"
+          v-bind="props"
+          cols="12"
+        >
       <!-- 👉  Card -->
       <VCard
         flat
@@ -546,6 +548,8 @@ onMounted(async () => {
     </VCol>
   </VRow>
   <!-- !SECTION  -->
+    </div>
+  </Transition>
 
   <!-- Free Plan Confirmation Modal -->
   <VDialog
@@ -611,5 +615,16 @@ onMounted(async () => {
   inset-block-end: 3%;
   inset-inline-start: 50%;
   transform: translateX(-50%);
+}
+
+/* Fade transition for pricing section */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

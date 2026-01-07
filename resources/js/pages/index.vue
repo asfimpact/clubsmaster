@@ -20,22 +20,24 @@ if (userData.value?.role === 'admin') {
 
 const dashboardData = computed(() => [
   {
-    title: 'Membership Plan',
+    title: 'Current Plan',
     value: userData.value?.subscription_summary?.plan_name || 'No Active Plan',
     icon: 'tabler-award',
     color: 'primary',
   },
   {
-    title: 'Expiry Date',
-    value: userData.value?.subscription_summary?.expiry_date || 'N/A',
-    icon: 'tabler-calendar-event',
-    color: 'success',
+    title: 'Status',
+    value: userData.value?.access_control?.status 
+      ? userData.value.access_control.status.charAt(0).toUpperCase() + userData.value.access_control.status.slice(1)
+      : 'Inactive',
+    icon: userData.value?.access_control?.can_access ? 'tabler-circle-check' : 'tabler-alert-circle',
+    color: userData.value?.access_control?.can_access ? 'success' : 'warning',
   },
   {
-    title: 'Total Membership Plan',
-    value: '5',
-    icon: 'tabler-users',
-    color: 'warning',
+    title: 'Next Billing / Expiry',
+    value: userData.value?.subscription_summary?.expiry_date || 'N/A',
+    icon: 'tabler-calendar-event',
+    color: 'info',
   },
 ])
 
@@ -74,10 +76,17 @@ onMounted(async () => {
         <VCard>
           <VCardText>
             <h4 class="text-h4 mb-1">
-              Welcome back, <span class="text-capitalize">{{ userData?.fullName || 'Client' }}</span>! 👋🏻
+              Welcome back, <span class="text-capitalize">{{ userData?.first_name || 'Client' }}</span>! 👋🏻
             </h4>
             <p class="mb-0">
-              Your subscription is active. You can manage your membership and payments below.
+              <template v-if="userData?.access_control?.can_access">
+                <VIcon icon="tabler-circle-check" color="success" size="18" class="me-1" />
+                Your subscription is <strong>active</strong>. Manage your membership below.
+              </template>
+              <template v-else>
+                <VIcon icon="tabler-alert-circle" color="warning" size="18" class="me-1" />
+                You don't have an active plan. <strong>Select a plan below</strong> to get started.
+              </template>
             </p>
           </VCardText>
         </VCard>
@@ -116,7 +125,7 @@ onMounted(async () => {
 
       <!-- 👉 Pricing Section -->
       <VCol cols="12">
-        <VCard title="Upgrade Your Plan">
+        <VCard title="Upgrade Your Plan" style="min-height: 600px;">
           <VCardText>
             <AppPricing md="4" />
           </VCardText>

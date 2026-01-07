@@ -7,17 +7,16 @@ export default [
   {
     title: 'FAQ',
     icon: { icon: 'tabler-help' },
-    to: 'pages-faq',
+    href: '#',
   },
   {
     title: 'Support',
     icon: { icon: 'tabler-headphones' },
-    to: 'front-pages-help-center', // Map to help center or support
+    href: '#',
   },
   {
     title: 'Documentation',
-    href: 'https://demos.pixinvent.com/vuexy-vuejs-admin-template/documentation/',
     icon: { icon: 'tabler-file-text' },
-    target: '_blank',
+    href: '#',
   },
 ]
