@@ -112,6 +112,30 @@ return [
     |
     */
 
-    'prefix' => env('CACHE_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')).'-cache-'),
+    'prefix' => env('CACHE_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')) . '-cache-'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cache Stale Thresholds (in seconds)
+    |--------------------------------------------------------------------------
+    |
+    | These values determine when cached data is considered "stale" and should
+    | trigger a sync from the source of truth (e.g., Stripe API).
+    |
+    | Different data types have different freshness requirements:
+    | - Subscriptions: 1 hour (3600s) - Changes infrequently
+    | - Invoices: 10 minutes (600s) - May update during payment processing
+    | - Plans: 1 day (86400s) - Admin changes are rare
+    | - User Data: 30 minutes (1800s) - Profile updates are occasional
+    |
+    */
+
+    'stale_thresholds' => [
+        'subscription' => env('CACHE_STALE_SUBSCRIPTION', 3600),    // 1 hour
+        'invoices' => env('CACHE_STALE_INVOICES', 600),             // 10 minutes
+        'plans' => env('CACHE_STALE_PLANS', 86400),                 // 1 day
+        'user_data' => env('CACHE_STALE_USER_DATA', 1800),          // 30 minutes
+        'membership' => env('CACHE_STALE_MEMBERSHIP', 3600),        // 1 hour
+    ],
 
 ];

@@ -315,11 +315,20 @@ class WebhookController extends CashierController
     }
 
     /**
-     * Handle invoice payment succeeded - (Simplified logging only)
+     * Handle invoice payment succeeded - Dispatch to queue
      */
     protected function handleInvoicePaymentSucceeded(array $payload)
     {
-        Log::info('🕐 Webhook: invoice.payment_succeeded received (handled via checkout session)');
+        // Dispatch to queue for async processing
+        \App\Jobs\ProcessStripeWebhook::dispatch('invoice.payment_succeeded', $payload)
+            ->onQueue('webhooks')
+            ->delay(now()->addSeconds(2)); // Small delay for DB sync
+
+        Log::info('📤 Invoice payment webhook dispatched to queue', [
+            'invoice_id' => $payload['data']['object']['id'] ?? 'unknown'
+        ]);
+
+        // Return immediately (Stripe expects 200 within 5s)
         return response()->json(['status' => 'success']);
     }
 }

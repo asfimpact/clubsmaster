@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useApi } from '@/composables/useApi'
 
 definePage({
@@ -8,6 +8,9 @@ definePage({
 
 const invoices = ref([])
 const loading = ref(true)
+const refreshing = ref(false)
+const lastUpdated = ref(null)
+const cached = ref(true)
 
 const headers = [
   { title: 'Date', key: 'date', sortable: true },
@@ -17,10 +20,24 @@ const headers = [
   { title: 'Receipt', key: 'pdf_url', sortable: false },
 ]
 
-const fetchPaymentHistory = async () => {
-  loading.value = true
+const timeAgo = computed(() => {
+  if (!lastUpdated.value) return ''
+  const seconds = Math.floor((new Date() - new Date(lastUpdated.value)) / 1000)
+  if (seconds < 60) return 'just now'
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+  return `${Math.floor(seconds / 3600)}h ago`
+})
+
+const fetchPaymentHistory = async (fresh = false) => {
+  if (fresh) {
+    refreshing.value = true
+  } else {
+    loading.value = true
+  }
+  
   try {
-    const { data, error, statusCode } = await useApi('/user/payment-history')
+    const url = fresh ? '/user/payment-history?fresh=1' : '/user/payment-history'
+    const { data, error, statusCode } = await useApi(url)
     
     // Check for authentication error
     if (statusCode.value === 401 || error.value) {
@@ -29,6 +46,8 @@ const fetchPaymentHistory = async () => {
     }
     
     invoices.value = data.value?.invoices || []
+    lastUpdated.value = data.value?.last_updated || new Date().toISOString()
+    cached.value = data.value?.cached !== false
   } catch (error) {
     console.error('Failed to fetch payment history:', error)
     // If error is auth-related, redirect to login
@@ -37,7 +56,12 @@ const fetchPaymentHistory = async () => {
     }
   } finally {
     loading.value = false
+    refreshing.value = false
   }
+}
+
+const refreshInvoices = () => {
+  fetchPaymentHistory(true)
 }
 
 onMounted(() => {
@@ -48,7 +72,25 @@ onMounted(() => {
 <template>
   <VRow>
     <VCol cols="12">
-      <VCard title="Payment History">
+      <VCard>
+        <VCardTitle class="d-flex align-center justify-space-between">
+          <span>Payment History</span>
+          <div class="d-flex gap-2 align-center">
+            <VChip v-if="lastUpdated" size="small" :color="cached ? 'info' : 'success'">
+              <VIcon icon="tabler-clock" size="16" class="me-1" />
+              {{ timeAgo }}
+            </VChip>
+            <VBtn
+              size="small"
+              variant="tonal"
+              prepend-icon="tabler-refresh"
+              :loading="refreshing"
+              @click="refreshInvoices"
+            >
+              Refresh
+            </VBtn>
+          </div>
+        </VCardTitle>
         <VCardText>
           <!-- Empty State -->
           <div v-if="!loading && invoices.length === 0" class="text-center pa-8">

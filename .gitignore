@@ -98,3 +98,15 @@ commit_comparison_628_to_ce8.md
 essential_fixes_to_keep.md
 webhookcontroller_comparison.md
 .agent
+
+# Caching implementation documentation (internal use only)
+CACHING_IMPLEMENTATION.md
+CACHING_ROADMAP_PHASE_2_3.md
+CONFIGURABLE_STALE_THRESHOLDS.md
+DAILY_LOG_ROTATION.md
+PHASE_0_1_COMPLETE.md
+PHASE_1_COMPLETE.md
+PRE_COMMIT_TEST_RESULTS.md
+TRUE_SELF_HEALING_COMPLETE.md
+cache-webhook.md
+cachechecklist*.md

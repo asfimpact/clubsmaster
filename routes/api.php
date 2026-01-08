@@ -5,6 +5,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/user', function (Request $request) {
+    // Check if fresh data is requested (clear cache)
+    if ($request->query('fresh')) {
+        \App\Services\CacheService::clearUser($request->user()->id);
+    }
+
     $user = $request->user()->load('subscription.plan');
 
     // Add flag to check if user has ever used free trial

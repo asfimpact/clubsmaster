@@ -43,6 +43,26 @@ const dashboardData = computed(() => [
 
 // Fetch fresh user data on mount and poll for updates
 onMounted(async () => {
+  // Check if returning from Stripe checkout
+  const urlParams = new URLSearchParams(window.location.search)
+  const paymentStatus = urlParams.get('payment')
+  
+  if (paymentStatus === 'success') {
+    // Clear URL parameter
+    window.history.replaceState({}, document.title, window.location.pathname)
+    
+    // Force refresh user data (clears cache on backend)
+    try {
+      const { data } = await useApi('/user?fresh=1')
+      if (data.value) {
+        userData.value = data.value
+      }
+    } catch (e) {
+      console.error('Failed to refresh user data after checkout', e)
+    }
+  }
+
+  // Regular user data refresh
   try {
     const { data } = await useApi('/user')
     if (data.value) {

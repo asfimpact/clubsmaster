@@ -19,6 +19,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Register observers for automatic cache clearing
+        \App\Models\Subscription::observe(\App\Observers\SubscriptionObserver::class);
+        \App\Models\User::observe(\App\Observers\UserObserver::class);
+        \App\Models\Plan::observe(\App\Observers\PlanObserver::class);
     }
 }
