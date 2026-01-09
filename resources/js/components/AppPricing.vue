@@ -3,6 +3,7 @@ import safeBoxWithGoldenCoin from '@images/misc/3d-safe-box-with-golden-dollar-c
 import spaceRocket from '@images/misc/3d-space-rocket-with-smoke.png'
 import dollarCoinPiggyBank from '@images/misc/dollar-coins-flying-pink-piggy-bank.png'
 import { useApi } from '@/composables/useApi'
+import SubscriptionProcessingOverlay from '@/components/SubscriptionProcessingOverlay.vue'
 
 const props = defineProps({
   title: {
@@ -58,6 +59,15 @@ const showFreePlanModal = ref(false)
 const selectedFreePlan = ref(null)
 const freePlanDuration = ref(0)
 
+// Upgrade processing overlay
+const showUpgradeOverlay = ref(false)
+const upgradeMessage = ref('Processing your upgrade...')
+const upgradeProgress = ref(0)
+const upgradingToPlanName = ref('')
+
+// Interval tracking for cleanup
+let upgradePollInterval = null
+
 // Snackbar notification
 const snackbar = ref(false)
 const snackbarMessage = ref('')
@@ -65,6 +75,7 @@ const snackbarColor = ref('success')
 
 // Connection error state
 const connectionError = ref(false)
+
 
 // Check if user has ever used free trial
 const hasUsedFreeTrial = computed(() => {
@@ -76,6 +87,71 @@ const hasUsedFreeTrial = computed(() => {
   })
   return value
 })
+
+// Poll for plan upgrade completion
+async function pollForPlanUpgrade(expectedPlanName) {
+  let attempts = 0
+  const maxAttempts = 15 // 15 seconds max
+  
+  // Clear any existing poll interval
+  if (upgradePollInterval) {
+    clearInterval(upgradePollInterval)
+  }
+  
+  upgradePollInterval = setInterval(async () => {
+    attempts++
+    upgradeProgress.value = Math.min((attempts / maxAttempts) * 100, 95)
+    
+    try {
+      const { data } = await useApi('/user?fresh=1')
+      
+      if (data.value) {
+        const currentPlanName = data.value.subscription_summary?.plan_name
+        
+        // Check if plan has changed to expected plan
+        if (currentPlanName === expectedPlanName) {
+          // Upgrade complete!
+          clearInterval(upgradePollInterval)
+          upgradePollInterval = null
+          upgradeProgress.value = 100
+          upgradeMessage.value = `Upgraded to ${expectedPlanName}! 🎉`
+          
+          // Update user data
+          userData.value = data.value
+          
+          // Refresh plans to update button states
+          await fetchPlans()
+          
+          // Hide overlay after brief success message
+          setTimeout(() => {
+            showUpgradeOverlay.value = false
+            loadingPlanId.value = null
+          }, 1500)
+        } else if (attempts >= maxAttempts) {
+          // Timeout - hide overlay
+          clearInterval(upgradePollInterval)
+          upgradePollInterval = null
+          upgradeMessage.value = 'Taking longer than expected...'
+          userData.value = data.value
+          await fetchPlans()
+          
+          setTimeout(() => {
+            showUpgradeOverlay.value = false
+            loadingPlanId.value = null
+          }, 2000)
+        }
+      }
+    } catch (e) {
+      console.error('Error polling for upgrade:', e)
+      if (attempts >= maxAttempts) {
+        clearInterval(upgradePollInterval)
+        upgradePollInterval = null
+        showUpgradeOverlay.value = false
+        loadingPlanId.value = null
+      }
+    }
+  }, 1000) // Poll every 1 second
+}
 
 const subscribeToPlan = async (planId) => {
     // Prevent double-clicks
@@ -132,16 +208,14 @@ const subscribeToPlan = async (planId) => {
             
             // Check if this was a swap (existing subscriber upgrading/downgrading)
             if (data.value && data.value.swapped) {
-                // Plan was swapped instantly - no redirect needed
-                snackbarMessage.value = data.value.message || 'Your plan has been updated successfully!'
-                snackbarColor.value = 'success'
-                snackbar.value = true
+                // Plan was swapped instantly - show overlay while processing
+                upgradingToPlanName.value = selectedPlan.name
+                upgradeMessage.value = `Processing upgrade to ${selectedPlan.name}...`
+                upgradeProgress.value = 10
+                showUpgradeOverlay.value = true
                 
-                // Small delay to allow webhook to process and sync payment method
-                setTimeout(async () => {
-                    await fetchPlans()
-                    loadingPlanId.value = null
-                }, 3000) // 3 seconds gives webhook time to complete
+                // Start polling for plan change
+                await pollForPlanUpgrade(selectedPlan.name)
             } else if (data.value && data.value.url) {
                 // Redirect to Stripe Checkout (new subscriber OR fallback for missing payment method)
                 if (data.value.fallback) {
@@ -296,60 +370,29 @@ onMounted(async () => {
     if (userPriceId && pricingPlans.value.length > 0) {
         const isYearlyPrice = pricingPlans.value.some(p => p.stripeYearlyPriceId === userPriceId)
         annualMonthlyPlanPriceToggler.value = isYearlyPrice
-    } else if (userData.value?.current_subscription_frequency) {
+    } else {
         // Fallback to legacy string check
         annualMonthlyPlanPriceToggler.value = userData.value.current_subscription_frequency === 'yearly'
     }
-    
-    // Check if returning from Stripe Checkout
-    const urlParams = new URLSearchParams(window.location.search)
-    if (urlParams.get('payment') === 'success') {
-        // Show initial feedback
-        snackbarMessage.value = 'Payment successful! Activating your plan...'
-        snackbarColor.value = 'info'
-        snackbar.value = true
-        
-        // Poll for plan activation (every 2 seconds, max 10 seconds)
-        let pollCount = 0
-        const maxPolls = 5 // 10 seconds total
-        
-        const pollInterval = setInterval(async () => {
-            pollCount++
-            
-            const { data } = await useApi('/user')
-            
-            if (data.value?.subscription?.stripe_status === 'active' || 
-                data.value?.subscription?.stripe_status === 'trialing') {
-                // Plan activated!
-                clearInterval(pollInterval)
-                
-                snackbarMessage.value = `Plan activated! Welcome to ${data.value.subscription.plan?.name || 'Premium'}!`
-                snackbarColor.value = 'success'
-                
-                // Refresh all data
-                await Promise.all([
-                    fetchUser(),
-                    fetchPlans()
-                ])
-                
-                // Clean URL
-                window.history.replaceState({}, document.title, window.location.pathname)
-            } else if (pollCount >= maxPolls) {
-                // Timeout - webhook might be slow
-                clearInterval(pollInterval)
-                
-                snackbarMessage.value = 'Plan activation in progress. Please refresh in a moment.'
-                snackbarColor.value = 'warning'
-                
-                // Clean URL anyway
-                window.history.replaceState({}, document.title, window.location.pathname)
-            }
-        }, 2000)
-    }
+})
+
+// Cleanup interval on unmount
+onUnmounted(() => {
+  if (upgradePollInterval) {
+    clearInterval(upgradePollInterval)
+    upgradePollInterval = null
+  }
 })
 </script>
 
 <template>
+  <!-- Upgrade Processing Overlay -->
+  <SubscriptionProcessingOverlay
+    :show="showUpgradeOverlay"
+    :message="upgradeMessage"
+    :progress="upgradeProgress"
+  />
+
   <Transition name="fade">
     <div v-if="pricingPlans.length > 0">
       <!-- 👉 Title and subtitle -->

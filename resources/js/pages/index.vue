@@ -1,8 +1,17 @@
 <script setup>
 import { useApi } from '@/composables/useApi'
+import SubscriptionProcessingOverlay from '@/components/SubscriptionProcessingOverlay.vue'
 
 const userData = useCookie('userData')
 const router = useRouter()
+
+// Success overlay state
+const showSuccessOverlay = ref(false)
+const overlayMessage = ref('Finalizing your subscription...')
+const overlayProgress = ref(0)
+
+// Interval tracking for cleanup
+let dashboardPollInterval = null
 
 definePage({
   name: 'index',
@@ -41,6 +50,51 @@ const dashboardData = computed(() => [
   },
 ])
 
+// Poll for subscription activation after Stripe checkout
+async function pollForSubscriptionActivation() {
+  let attempts = 0
+  const maxAttempts = 15 // 15 seconds max (15 x 1 second)
+  
+  const pollInterval = setInterval(async () => {
+    attempts++
+    overlayProgress.value = Math.min((attempts / maxAttempts) * 100, 95)
+    
+    try {
+      const { data } = await useApi('/user?fresh=1')
+      
+      if (data.value?.access_control?.can_access) {
+        // Subscription is active!
+        clearInterval(pollInterval)
+        overlayProgress.value = 100
+        overlayMessage.value = 'Subscription activated! 🎉'
+        
+        // Update user data
+        userData.value = data.value
+        
+        // Hide overlay after brief success message
+        setTimeout(() => {
+          showSuccessOverlay.value = false
+        }, 1500)
+      } else if (attempts >= maxAttempts) {
+        // Timeout - hide overlay and show current state
+        clearInterval(pollInterval)
+        overlayMessage.value = 'Taking longer than expected...'
+        userData.value = data.value
+        
+        setTimeout(() => {
+          showSuccessOverlay.value = false
+        }, 2000)
+      }
+    } catch (e) {
+      console.error('Error polling for subscription:', e)
+      if (attempts >= maxAttempts) {
+        clearInterval(pollInterval)
+        showSuccessOverlay.value = false
+      }
+    }
+  }, 1000) // Poll every 1 second
+}
+
 // Fetch fresh user data on mount and poll for updates
 onMounted(async () => {
   // Check if returning from Stripe checkout
@@ -48,48 +102,64 @@ onMounted(async () => {
   const paymentStatus = urlParams.get('payment')
   
   if (paymentStatus === 'success') {
+    // Show success overlay (polling will handle data refresh)
+    showSuccessOverlay.value = true
+    overlayMessage.value = 'Finalizing your subscription...'
+    overlayProgress.value = 10
+    
     // Clear URL parameter
     window.history.replaceState({}, document.title, window.location.pathname)
     
-    // Force refresh user data (clears cache on backend)
+    // Start polling for subscription activation
+    await pollForSubscriptionActivation()
+  } else {
+    // Regular mount: Fetch fresh data immediately to avoid "Inactive" flash
     try {
       const { data } = await useApi('/user?fresh=1')
       if (data.value) {
         userData.value = data.value
       }
     } catch (e) {
-      console.error('Failed to refresh user data after checkout', e)
+      console.error('Failed to fetch fresh user data on dashboard mount', e)
     }
-  }
-
-  // Regular user data refresh
-  try {
-    const { data } = await useApi('/user')
-    if (data.value) {
-      userData.value = data.value
-    }
-  } catch (e) {
-    console.error('Failed to fetch user data on dashboard mount', e)
   }
 
   // Poll every 4 seconds to catch subscription changes from pricing component
   // (needed because useCookie refs don't share reactivity across components)
-  setInterval(async () => {
+  dashboardPollInterval = setInterval(async () => {
+    // Skip polling if success overlay is showing (1s poll is already running)
+    if (showSuccessOverlay.value) return
+    
     try {
       const { data } = await useApi('/user')
       if (data.value) {
         userData.value = data.value
       }
     } catch (e) {
-      console.error('Failed to refresh user data', e)
+      console.error('Polling error:', e)
     }
   }, 4000)
+})
+
+// Cleanup interval on unmount
+onUnmounted(() => {
+  if (dashboardPollInterval) {
+    clearInterval(dashboardPollInterval)
+    dashboardPollInterval = null
+  }
 })
 
 </script>
 
 <template>
   <div>
+    <!-- Subscription Processing Overlay -->
+    <SubscriptionProcessingOverlay
+      :show="showSuccessOverlay"
+      :message="overlayMessage"
+      :progress="overlayProgress"
+    />
+
     <VRow class="match-height">
       <!-- 👉 Welcome Card -->
       <VCol cols="12">

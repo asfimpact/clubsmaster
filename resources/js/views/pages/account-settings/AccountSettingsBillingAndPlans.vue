@@ -60,7 +60,8 @@ const userData = ref(null)
 // Fetch user data function
 const fetchUserData = async () => {
   try {
-    const response = await useApi('/user')  // Don't include /api - useApi adds it automatically
+    // Fetch fresh data to avoid "Loading..." delay
+    const response = await useApi('/user?fresh=1')
     
     // Handle different response structures from useApi
     if (response.data?.value && typeof response.data.value === 'object') {
